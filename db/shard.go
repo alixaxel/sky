@@ -8,7 +8,7 @@ import (
 	"time"
 
 	"github.com/skydb/sky/core"
-	"github.com/szferi/gomdb"
+	"github.com/boltdb/bolt"
 	"github.com/ugorji/go/codec"
 )
 
@@ -16,7 +16,7 @@ import (
 type shard struct {
 	sync.Mutex
 	path string
-	env  *mdb.Env
+	db  *bolt.DB
 }
 
 type Stat struct {
@@ -70,7 +70,7 @@ func (s *shard) Stat() (*Stat, error) {
 }
 
 // Open allocates a new LMDB environment.
-func (s *shard) Open(maxDBs uint, maxReaders uint, options uint) error {
+func (s *shard) Open(options uint) error {
 	s.Lock()
 	defer s.Unlock()
 	s.close()
@@ -80,27 +80,9 @@ func (s *shard) Open(maxDBs uint, maxReaders uint, options uint) error {
 	}
 
 	var err error
-	s.env, err = mdb.NewEnv()
+	s.db, err = bolt.Open(s.path, 0664)
 	if err != nil {
-		return fmt.Errorf("lmdb env error: %s", err)
-	}
-
-	// LMDB environment settings.
-	if err := s.env.SetMaxDBs(mdb.DBI(maxDBs)); err != nil {
-		s.close()
-		return fmt.Errorf("lmdb maxdbs error: %s", err)
-	} else if err := s.env.SetMaxReaders(maxReaders); err != nil {
-		s.close()
-		return fmt.Errorf("lmdb maxreaders error: %s", err)
-	} else if err := s.env.SetMapSize(2 << 40); err != nil {
-		s.close()
-		return fmt.Errorf("lmdb map size error: %s", err)
-	}
-
-	// Open the LMDB environment.
-	if err := s.env.Open(s.path, options, 0664); err != nil {
-		s.close()
-		return fmt.Errorf("lmdb env open error: %s", err)
+		return fmt.Errorf("shard database open error: %s", err)
 	}
 
 	return nil
@@ -114,84 +96,64 @@ func (s *shard) Close() {
 }
 
 func (s *shard) close() {
-	if s.env != nil {
-		s.env.Close()
-		s.env = nil
+	if s.db != nil {
+		s.db.Close()
+		s.db = nil
 	}
 }
 
 // Cursor retrieves a cursor for iterating over the shard.
-func (s *shard) Cursor(tablespace string) (*mdb.Cursor, error) {
+func (s *shard) Cursor(tablespace string) (*bolt.Cursor, error) {
 	s.Lock()
 	defer s.Unlock()
 
-	txn, dbi, err := s.txn(tablespace, true)
+	txn, table, err := s.table(tablespace, true)
 	if err != nil {
-		return nil, fmt.Errorf("shard cursor error: %s", err)
+		return nil, fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
 
-	c, err := s.cursor(txn, dbi)
-	if err != nil {
-		return nil, err
+	c := bucket.Cursor()
+	if c == nil {
+		txn.Rollback()
+		return nil, fmt.Errorf("failed to create cursor (%s)", tablespace)
 	}
 
 	return c, err
 }
 
-// cursor retrieves a cursor for iterating over the shard.
-func (s *shard) cursor(txn *mdb.Txn, dbi mdb.DBI) (*mdb.Cursor, error) {
-	c, err := txn.CursorOpen(dbi)
-	if err != nil {
-		return nil, fmt.Errorf("lmdb cursor open error: %s", err)
-	}
-	return c, nil
-}
 
 // InsertEvent adds a single event to the shard.
 func (s *shard) InsertEvent(tablespace string, id string, event *core.Event) error {
 	s.Lock()
 	defer s.Unlock()
 
-	txn, dbi, err := s.txn(tablespace, false)
+	txn, table, err := s.table(tablespace, false)
 	if err != nil {
-		return fmt.Errorf("lmdb txn begin error: %s", err)
+		return nil, fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
-	defer txn.Commit()
+	defer txn.Rollback()
 
-	c, err := s.cursor(txn, dbi)
-	if err != nil {
-		return fmt.Errorf("lmdb cursor error: %s", err)
-	}
-	defer c.Close()
-
-	if err := s.insertEvent(txn, dbi, c, id, core.ShiftTimeBytes(event.Timestamp), event.Data); err != nil {
+	if err := s.insertEvent(bucket, id, core.ShiftTimeBytes(event.Timestamp), event.Data); err != nil {
 		return err
 	}
+	txn.Commit()
 
 	return nil
 }
 
-func (s *shard) insertEvent(txn *mdb.Txn, dbi mdb.DBI, c *mdb.Cursor, id string, timestamp []byte, data map[int64]interface{}) error {
+func (s *shard) insertEvent(table *bolt.Bucket, id string, timestamp []byte, data map[int64]interface{}) error {
 	// Get event at timestamp and merge if existing.
-	if old, err := s.getEvent(c, id, timestamp); err != nil {
+	if old, err := s.getEvent(table, id, timestamp); err != nil {
 		return err
 	} else if old != nil {
 		for k, v := range data {
 			old[k] = v
 		}
 		data = old
-		if err := c.Del(0); err != nil {
-			return fmt.Errorf("lmdb cursor del error: %s", err)
-		}
-	}
-
-	// Encode timestamp.
-	var b bytes.Buffer
-	if _, err := b.Write(timestamp); err != nil {
-		return err
 	}
 
 	// Encode data.
+	var b bytes.Buffer
 	var handle codec.MsgpackHandle
 	handle.RawToString = true
 	if err := codec.NewEncoder(&b, &handle).Encode(data); err != nil {
@@ -199,8 +161,16 @@ func (s *shard) insertEvent(txn *mdb.Txn, dbi mdb.DBI, c *mdb.Cursor, id string,
 	}
 
 	// Insert event.
-	if err := txn.Put(dbi, []byte(id), b.Bytes(), 0); err != nil {
-		return fmt.Errorf("lmdb txn put error: %s (%s: len=%d)", err, string(id), b.Len())
+	object := table.Bucket([]byte(id))
+	if object == nil {
+		if err := table.CreateBucket([]byte(id)); err != nil {
+			return nil, fmt.Errorf("failed to create object: %s (id=%s)", err, id)	
+		}
+		object = table.Bucket([]byte(id))
+	}
+
+	if err := object.Put(timestamp, b.Bytes()); err != nil {
+		return fmt.Errorf("failed writing event: %s (%s: len=%d)", err, id, b.Len())
 	}
 
 	return nil
@@ -211,23 +181,18 @@ func (s *shard) InsertEvents(tablespace string, id string, events []*core.Event)
 	s.Lock()
 	defer s.Unlock()
 
-	txn, dbi, err := s.txn(tablespace, false)
+	txn, table, err := s.table(tablespace, false)
 	if err != nil {
-		return fmt.Errorf("lmdb txn begin error: %s", err)
+		return fmt.Errorf("failed to open table: %s", err)
 	}
-	defer txn.Commit()
-
-	c, err := s.cursor(txn, dbi)
-	if err != nil {
-		return fmt.Errorf("lmdb cursor error: %s", err)
-	}
-	defer c.Close()
+	defer txn.Rollback()
 
 	for _, event := range events {
-		if err := s.insertEvent(txn, dbi, c, id, core.ShiftTimeBytes(event.Timestamp), event.Data); err != nil {
+		if err := s.insertEvent(table, id, core.ShiftTimeBytes(event.Timestamp), event.Data); err != nil {
 			return err
 		}
 	}
+	txn.Commit()
 
 	return nil
 }
@@ -237,19 +202,13 @@ func (s *shard) GetEvent(tablespace string, id string, timestamp time.Time) (*co
 	s.Lock()
 	defer s.Unlock()
 
-	txn, dbi, err := s.txn(tablespace, true)
+	txn, table, err := s.table(tablespace, true)
 	if err != nil {
-		return nil, fmt.Errorf("lmdb txn begin error: %s", err)
+		return fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
-	defer txn.Commit()
+	defer txn.Rollback()
 
-	c, err := s.cursor(txn, dbi)
-	if err != nil {
-		return nil, fmt.Errorf("lmdb cursor error: %s", err)
-	}
-	defer c.Close()
-
-	data, err := s.getEvent(c, id, core.ShiftTimeBytes(timestamp))
+	data, err := s.getEvent(table, id, core.ShiftTimeBytes(timestamp))
 	if err != nil {
 		return nil, err
 	}
@@ -261,33 +220,23 @@ func (s *shard) GetEvent(tablespace string, id string, timestamp time.Time) (*co
 	return &core.Event{Timestamp: timestamp, Data: data}, nil
 }
 
-func (s *shard) getEvent(c *mdb.Cursor, id string, timestamp []byte) (map[int64]interface{}, error) {
-	// Position cursor at possible event.
-	_, _, err := mdbGet2(c, []byte(id), timestamp, mdb.GET_RANGE)
-	if err == mdb.NotFound || err == mdb.Incompatibile {
-		return nil, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("lmdb cursor get error: %s", err)
+func (s *shard) getEvent(table *bolt.Bucket, id string, timestamp []byte) (map[int64]interface{}, error) {
+
+	object := table.Bucket([]byte(id))
+	if bucket == nil {
+		return nil, fmt.Errorf("object not found: %s", id)		
 	}
 
-	// Retrieve current cursor value.
-	_, val, err := c.Get(nil, mdb.GET_CURRENT)
-	if err == mdb.NotFound {
-		return nil, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("lmdb cursor get current error: %s", err)
-	}
-
-	// Check if timestamp is equal.
-	if !bytes.Equal(timestamp, val[0:8]) {
-		return nil, nil
+	event := object.Get(timestamp)
+	if event == nil {
+		return nil, fmt.Errorf("event not found: %s (%s)", timestamp, id)		
 	}
 
 	// Decode data.
 	var data = make(map[int64]interface{})
 	var handle codec.MsgpackHandle
 	handle.RawToString = true
-	if err := codec.NewDecoder(bytes.NewBuffer(val[8:]), &handle).Decode(&data); err != nil {
+	if err := codec.NewDecoder(bytes.NewBuffer(event), &handle).Decode(&data); err != nil {
 		return nil, err
 	}
 	for k, v := range data {
@@ -304,34 +253,27 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 
 	var events = make([]*core.Event, 0)
 
-	txn, dbi, err := s.txn(tablespace, true)
+	txn, table, err := s.table(tablespace, true)
 	if err != nil {
-		return nil, fmt.Errorf("lmdb txn begin error: %s", err)
+		return fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
-	defer txn.Commit()
+	defer txn.Rollback()
 
-	c, err := s.cursor(txn, dbi)
-	if err != nil {
-		return nil, fmt.Errorf("lmdb cursor error: %s", err)
-	}
-	defer c.Close()
-
-	// Initialize cursor.
-	if _, _, err := mdbGet2(c, []byte(id), []byte{0}, mdb.GET_RANGE); err == mdb.NotFound || err == mdb.Incompatibile {
-		return events, nil
-	} else if err != nil {
-		return nil, fmt.Errorf("lmdb cursor init error: %s", err)
+	object := table.Bucket([]byte(id))
+	if bucket == nil {
+		return nil, fmt.Errorf("object not found: %s (%s)", id, tablespace)		
 	}
 
-	for {
-		_, val, err := c.Get([]byte(id), mdb.GET_CURRENT)
-		if err != nil {
-			return nil, fmt.Errorf("lmdb cursor current error: %s", err)
-		}
+	c := object.Cursor()
+	if c = nil {
+		return nil, fmt.Errorf("failed to open cursor: %s (%s)", id, tablespace)
+	}
+
+	for key, val := c.First(); key != nil; key, val = c.Next() {
 
 		// Create event.
 		event := &core.Event{
-			Timestamp: core.UnshiftTimeBytes(val[0:8]),
+			Timestamp: core.UnshiftTimeBytes(key),
 			Data:      make(map[int64]interface{}),
 		}
 
@@ -346,13 +288,6 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 		}
 
 		events = append(events, event)
-
-		// Move cursor forward.
-		if _, _, err := c.Get([]byte(id), mdb.NEXT_DUP); err == mdb.NotFound {
-			break
-		} else if err != nil {
-			return nil, fmt.Errorf("lmdb cursor next dup error: %s", err)
-		}
 	}
 
 	return events, nil
@@ -363,26 +298,21 @@ func (s *shard) DeleteEvent(tablespace string, id string, timestamp time.Time) e
 	s.Lock()
 	defer s.Unlock()
 
-	txn, dbi, err := s.txn(tablespace, false)
+	txn, table, err := s.table(tablespace, false)
 	if err != nil {
-		return fmt.Errorf("lmdb txn begin error: %s", err)
+		return fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
-	defer txn.Commit()
+	defer txn.Rollback()
 
-	c, err := s.cursor(txn, dbi)
-	if err != nil {
-		return fmt.Errorf("lmdb cursor error: %s", err)
+	object := table.Bucket([]byte(id))
+	if bucket == nil {
+		return nil, fmt.Errorf("object not found: %s (%s)", id, tablespace)		
 	}
-	defer c.Close()
 
-	// Check if event exists and move the cursor.
-	if old, err := s.getEvent(c, id, core.ShiftTimeBytes(timestamp)); err != nil {
+	if err = object.Delete(core.ShiftTimeBytes(timestamp)); err != nil {
 		return err
-	} else if old != nil {
-		if err := c.Del(0); err != nil {
-			return fmt.Errorf("lmdb cursor del error: %s", err)
-		}
 	}
+	txn.Commit()
 
 	return nil
 }
@@ -393,16 +323,17 @@ func (s *shard) DeleteObject(tablespace, id string) error {
 	defer s.Unlock()
 
 	// Begin a transaction.
-	txn, dbi, err := s.txn(tablespace, false)
+	txn, table, err := s.table(tablespace, false)
 	if err != nil {
-		return fmt.Errorf("shard delete txn error: %s", err)
+		return fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
-	defer txn.Commit()
+	txn.Rollback()
 
 	// Delete the key.
-	if err = txn.Del(dbi, []byte(id), nil); err != nil && err != mdb.NotFound {
-		return fmt.Errorf("shard delete error: %s", err)
+	if err = table.DeleteBucket([]byte(id)); err != nil {
+		return fmt.Errorf("object delete error: %s (%s)", err, id)
 	}
+	txn.Commit()
 
 	return nil
 }
@@ -415,41 +346,30 @@ func (s *shard) Drop(tablespace string) error {
 }
 
 func (s *shard) drop(tablespace string) error {
-	txn, dbi, err := s.txn(tablespace, false)
+	txn, err := s.db.Begin(true)
 	if err != nil {
-		return fmt.Errorf("drop txn error: %s", err)
+		return nil, nil, fmt.Errorf("Unable to start bolt transaction: %s", err)
 	}
-	defer txn.Commit()
+	defer txn.Rollback()
 
-	// Drop the table.
-	if err = txn.Drop(dbi, 1); err != nil {
-		return fmt.Errorf("drop error: %s", err)
+	// Delete the key.
+	if err = txn.DeleteBucket([]byte(tablespace)); err != nil {
+		return fmt.Errorf("table delete error: %s (%s)", err, id)
 	}
-
+	txn.Commit()
+	
 	return nil
 }
 
-func (s *shard) txn(tablespace string, readOnly bool) (*mdb.Txn, mdb.DBI, error) {
-	var flags uint = 0
-	if readOnly {
-		flags = flags | mdb.RDONLY
-	}
-
-	// Setup cursor to iterate over table.
-	txn, err := s.env.BeginTxn(nil, flags)
+func (s *shard) table(tablespace string, readOnly bool) (*bolt.Tx, *bolt.Bucket, error) {
+	txn, err := s.db.Begin(!readOnly)
 	if err != nil {
-		return nil, 0, fmt.Errorf("Unable to start LMDB transaction: %s", err)
+		return nil, nil, fmt.Errorf("Unable to start bolt transaction: %s", err)
 	}
-	var dbi mdb.DBI
-	if readOnly {
-		if dbi, err = txn.DBIOpen(&tablespace, mdb.DUPSORT); err != nil && err != mdb.NotFound {
-			return nil, 0, fmt.Errorf("Unable to open read-only LMDB DBI: %s", err)
-		}
-	} else {
-		if dbi, err = txn.DBIOpen(&tablespace, mdb.CREATE|mdb.DUPSORT); err != nil {
-			return nil, 0, fmt.Errorf("Unable to open writable LMDB DBI: %s", err)
-		}
+	bucket := txn.Bucket([]byte(tablespace))
+	if bucket == nil {
+		txn.Rollback()
+		return nil, nil, fmt.Errorf("Bucket does not exist: %s", tablespace)		
 	}
-
-	return txn, dbi, nil
+	return txn, bucket, nil
 }

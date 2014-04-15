@@ -4,7 +4,7 @@ import (
 	"encoding/binary"
 	"fmt"
 	"github.com/skydb/sky/core"
-	"github.com/szferi/gomdb"
+	"github.com/boltdb/bolt"
 	"os"
 	"sync"
 )
@@ -21,24 +21,15 @@ const cacheSize = 1000
 type Factorizer struct {
 	sync.Mutex
 
-	NoSync     bool
-	MaxDBs     uint
-	MaxReaders uint
-
-	env    *mdb.Env
+	db    *bolt.DB
 	path   string
 	caches map[string]*cache
-	txn    *mdb.Txn
 	dirty  bool
 }
 
 // NewFactorizer returns a new Factorizer instance.
 func NewFactorizer() *Factorizer {
-	return &Factorizer{
-		NoSync:     true,
-		MaxDBs:     4096,
-		MaxReaders: 126,
-	}
+	return &Factorizer{}
 }
 
 // Path is the location of the factors database on disk.
@@ -46,10 +37,8 @@ func (f *Factorizer) Path() string {
 	return f.path
 }
 
-// Open opens a new LMDB environment at the given path.
-// If an environment does not exist then a new one is created.
+// Open bolt database at the given path.
 func (f *Factorizer) Open(path string) error {
-	var err error
 
 	f.Lock()
 	defer f.Unlock()
@@ -62,36 +51,14 @@ func (f *Factorizer) Open(path string) error {
 	if err := os.MkdirAll(f.path, 0700); err != nil {
 		return err
 	}
-	if f.env, err = mdb.NewEnv(); err != nil {
-		return fmt.Errorf("factor env error: %s", err)
-	}
 
-	// LMDB environment settings.
-	if err := f.env.SetMaxDBs(mdb.DBI(f.MaxDBs)); err != nil {
+	if err := bolt.Open(f.path, 0664); err != nil {
 		f.close()
-		return fmt.Errorf("factor maxdbs error: %s", err)
-	} else if err := f.env.SetMaxReaders(f.MaxReaders); err != nil {
-		f.close()
-		return fmt.Errorf("factor maxreaders error: %s", err)
-	} else if err := f.env.SetMapSize(2 << 38); err != nil {
-		f.close()
-		return fmt.Errorf("factor map size error: %s", err)
-	}
-
-	// Create LMDB flagset.
-	var options uint = mdb.NOTLS
-	if f.NoSync {
-		options |= mdb.NOSYNC
-	}
-
-	// Open the LMDB environment.
-	if err := f.env.Open(f.path, options, 0664); err != nil {
-		f.close()
-		return fmt.Errorf("factor env open error: %s", err)
+		return fmt.Errorf("factor database open error: %s", err)
 	}
 
 	// Open the writer.
-	if err = f.renew(); err != nil {
+	if err := f.renew(); err != nil {
 		f.close()
 		return fmt.Errorf("factor txn open error: %s", err)
 	}
@@ -113,9 +80,9 @@ func (f *Factorizer) close() {
 	f.path = ""
 	f.caches = nil
 
-	if f.env != nil {
-		f.env.Close()
-		f.env = nil
+	if f.db != nil {
+		f.db.Close()
+		f.db = nil
 	}
 }
 
