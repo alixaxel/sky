@@ -226,7 +226,7 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 
 	object := table.Bucket([]byte(id))
 	if object == nil {
-		return nil, fmt.Errorf("object not found: %s (%s)", id, tablespace)		
+		return nil, nil		
 	}
 
 	c := object.Cursor()
