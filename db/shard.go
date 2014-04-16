@@ -121,16 +121,13 @@ func (s *shard) insertEvent(table *bolt.Bucket, id string, timestamp []byte, dat
 	}
 
 	// Insert event.
-	object := table.Bucket([]byte(id))
-	if object == nil {
-		if err := table.CreateBucket([]byte(id)); err != nil {
-			return fmt.Errorf("failed to create object: %s (id=%s)", err, id)	
-		}
-		object = table.Bucket([]byte(id))
+	object, err := table.CreateBucketIfNotExists([]byte(id))
+	if err != nil {
+		return fmt.Errorf("error creating object: %s (id=%s)", err, id)	
 	}
 
 	if err := object.Put(timestamp, b.Bytes()); err != nil {
-		return fmt.Errorf("failed writing event: %s (%s: len=%d)", err, id, b.Len())
+		return fmt.Errorf("error writing event: %s (%s: len=%d)", err, id, b.Len())
 	}
 
 	return nil
@@ -266,7 +263,7 @@ func (s *shard) DeleteEvent(tablespace string, id string, timestamp time.Time) e
 
 	object := table.Bucket([]byte(id))
 	if bucket == nil {
-		return nil, fmt.Errorf("object not found: %s (%s)", id, tablespace)		
+		return fmt.Errorf("object not found: %s (%s)", id, tablespace)		
 	}
 
 	if err = object.Delete(core.ShiftTimeBytes(timestamp)); err != nil {
@@ -308,13 +305,13 @@ func (s *shard) Drop(tablespace string) error {
 func (s *shard) drop(tablespace string) error {
 	txn, err := s.db.Begin(true)
 	if err != nil {
-		return nil, nil, fmt.Errorf("Unable to start bolt transaction: %s", err)
+		return fmt.Errorf("Unable to start bolt transaction: %s", err)
 	}
 	defer txn.Rollback()
 
 	// Delete the key.
 	if err = txn.DeleteBucket([]byte(tablespace)); err != nil {
-		return fmt.Errorf("table delete error: %s (%s)", err, id)
+		return fmt.Errorf("table delete error: %s (%s)", err, tablespace)
 	}
 	txn.Commit()
 	

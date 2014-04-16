@@ -62,7 +62,7 @@ func (f *Factorizer) Open(path string) error {
 
 	f.renew()
 	
-	if err := f.txn.CreateBucketIfNotExists(bucket); err != nil {
+	if _, err := f.txn.CreateBucketIfNotExists(bucket); err != nil {
 		return fmt.Errorf("factor bucket creation error: %s", err)
 	}
 	
