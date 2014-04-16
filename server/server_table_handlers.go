@@ -7,7 +7,6 @@ import (
 
 	"github.com/gorilla/mux"
 	"github.com/skydb/sky/core"
-	"github.com/szferi/gomdb"
 )
 
 func (s *Server) addTableHandlers() {
@@ -79,20 +78,12 @@ func (s *Server) tableKeysHandler(w http.ResponseWriter, req *http.Request, para
 		return nil, err
 	}
 
-	cursors, err := s.db.Cursors(t.Name)
-	if err != nil {
-		return nil, err
-	}
+	cursors := s.db.Cursors(t.Name)
 	defer cursors.Close()
 
 	keys := []string{}
 	for _, c := range cursors {
-		for {
-			// Retrieve main key value.
-			bkey, _, err := c.Get(nil, mdb.NEXT_NODUP)
-			if err != nil {
-				break
-			}
+		for bkey, _ := c.First(); bkey != nil; bkey, _ = c.Next() {
 			keys = append(keys, string(bkey))
 		}
 	}

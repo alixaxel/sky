@@ -418,10 +418,7 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 	engines := make([]*query.ExecutionEngine, 0)
 
 	// Retrieve low-level cursors for iterating.
-	cursors, err := s.db.Cursors(table.Name)
-	if err != nil {
-		return nil, err
-	}
+	cursors := s.db.Cursors(table.Name)
 
 	// Create a channel to receive aggregate responses.
 	rchannel := make(chan interface{}, len(cursors))
