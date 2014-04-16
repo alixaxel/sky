@@ -8,6 +8,7 @@ import (
 	"os"
 	"sync"
 	"strconv"
+	"path"
 )
 
 // cacheSize is the number of factors that are stored in the LRU cache.
@@ -15,7 +16,7 @@ import (
 const cacheSize = 1000
 
 // name of the factor db bucket
-var bucket = []byte("factors")
+var factors = []byte("factors")
 
 // Factorizer manages the factorization and defactorization of values for a table.
 type Factorizer struct {
@@ -39,7 +40,7 @@ func (f *Factorizer) Path() string {
 }
 
 // Open bolt database at the given path.
-func (f *Factorizer) Open(path string) error {
+func (f *Factorizer) Open(dbPath string) error {
 	var err error
 	
 	f.Lock()
@@ -49,8 +50,8 @@ func (f *Factorizer) Open(path string) error {
 	f.close()
 
 	// Initialize and open the database.
-	f.path = path
-	if err = os.MkdirAll(f.path, 0700); err != nil {
+	f.path = dbPath
+	if err = os.MkdirAll(path.Dir(f.path), 0700); err != nil {
 		return err
 	}
 
@@ -62,7 +63,7 @@ func (f *Factorizer) Open(path string) error {
 
 	f.renew()
 	
-	if _, err := f.txn.CreateBucketIfNotExists(bucket); err != nil {
+	if _, err := f.txn.CreateBucketIfNotExists(factors); err != nil {
 		return fmt.Errorf("factor bucket creation error: %s", err)
 	}
 	
@@ -194,7 +195,7 @@ func (f *Factorizer) factorize(id string, value string, createIfMissing bool) (u
 		return sequence, nil
 	}
 
-	bucket := f.txn.Bucket(bucket)
+	bucket := f.txn.Bucket(factors)
 	
 	data := bucket.Get(f.key(value))
 	if data != nil {
@@ -251,7 +252,7 @@ func (f *Factorizer) defactorize(id string, value uint64) (string, error) {
 		return key, nil
 	}
 
-	bucket := f.txn.Bucket(bucket)
+	bucket := f.txn.Bucket(factors)
 	
 	data := bucket.Get(f.revkey(value))
 

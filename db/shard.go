@@ -6,6 +6,7 @@ import (
 	"os"
 	"sync"
 	"time"
+	"path"
 
 	"github.com/skydb/sky/core"
 	"github.com/boltdb/bolt"
@@ -35,7 +36,7 @@ func (s *shard) Open() error {
 	defer s.Unlock()
 	s.close()
 
-	if err := os.MkdirAll(s.path, 0700); err != nil {
+	if err := os.MkdirAll(path.Dir(s.path), 0700); err != nil {
 		return err
 	}
 
@@ -178,15 +179,22 @@ func (s *shard) GetEvent(tablespace string, id string, timestamp time.Time) (*co
 }
 
 func (s *shard) getEvent(table *bolt.Bucket, id string, timestamp []byte) (map[int64]interface{}, error) {
-
-	object := table.Bucket([]byte(id))
-	if bucket == nil {
-		return nil, fmt.Errorf("object not found: %s", id)		
+	var object *bolt.Bucket
+	var err error
+	if table.Writable() {
+		object, err = table.CreateBucketIfNotExists([]byte(id))
+		if err != nil {
+			return nil, fmt.Errorf("failed to create object: %s (%s)", err, id)		
+		}
+	} else {
+		if object = table.Bucket([]byte(id)); object == nil {
+			return nil, nil
+		}
 	}
 
 	event := object.Get(timestamp)
 	if event == nil {
-		return nil, fmt.Errorf("event not found: %s (%s)", timestamp, id)		
+		return nil, nil	
 	}
 
 	// Decode data.
@@ -217,7 +225,7 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 	defer txn.Rollback()
 
 	object := table.Bucket([]byte(id))
-	if bucket == nil {
+	if object == nil {
 		return nil, fmt.Errorf("object not found: %s (%s)", id, tablespace)		
 	}
 
@@ -262,7 +270,7 @@ func (s *shard) DeleteEvent(tablespace string, id string, timestamp time.Time) e
 	defer txn.Rollback()
 
 	object := table.Bucket([]byte(id))
-	if bucket == nil {
+	if object == nil {
 		return fmt.Errorf("object not found: %s (%s)", id, tablespace)		
 	}
 
@@ -323,10 +331,19 @@ func (s *shard) table(tablespace string, readOnly bool) (*bolt.Tx, *bolt.Bucket,
 	if err != nil {
 		return nil, nil, fmt.Errorf("Unable to start bolt transaction: %s", err)
 	}
-	bucket := txn.Bucket([]byte(tablespace))
-	if bucket == nil {
-		txn.Rollback()
-		return nil, nil, fmt.Errorf("Bucket does not exist: %s", tablespace)		
+	var bucket *bolt.Bucket
+	if readOnly {
+		bucket = txn.Bucket([]byte(tablespace))
+		if bucket == nil {
+			txn.Rollback()
+			return nil, nil, fmt.Errorf("Table does not exist: %s", tablespace)
+		}		
+	} else {
+		bucket, err = txn.CreateBucketIfNotExists([]byte(tablespace))
+		if err != nil {
+			txn.Rollback()
+			return nil, nil, fmt.Errorf("Failed to create table: %s (%s)", err, tablespace)
+		}		
 	}
 	return txn, bucket, nil
 }
