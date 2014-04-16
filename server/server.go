@@ -202,7 +202,7 @@ func (s *Server) open() error {
 	}
 
 	// Initialize and open database.
-	s.db = db.New(s.path, s.NoSync, s.MaxDBs, s.MaxReaders)
+	s.db = db.New(s.path)
 	if err = s.db.Open(); err != nil {
 		s.close()
 		return err
