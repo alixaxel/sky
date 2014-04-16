@@ -11,6 +11,7 @@ import (
 	"time"
 
 	"github.com/skydb/sky/core"
+	"github.com/boltdb/bolt"
 )
 
 var defaultShardCount = runtime.NumCPU()
@@ -32,15 +33,12 @@ type DB interface {
 	DeleteObject(tablespace string, id string) error
 	Merge(tablespace string, destinationId string, sourceId string) error
 	Drop(tablespace string) error
-	Stats() ([]*Stat, error)
+	Stats() []*bolt.Stats
 }
 
 // db is the default implementation of the DB interface.
 type db struct {
 	sync.RWMutex
-	NoSync     bool
-	MaxDBs     uint
-	MaxReaders uint
 
 	factorizers map[string]*Factorizer
 	path        string
@@ -48,13 +46,10 @@ type db struct {
 }
 
 // Creates a new DB instance with data storage at the given path.
-func New(path string, noSync bool, maxDBs uint, maxReaders uint) DB {
+func New(path string) DB {
 	return &db{
 		factorizers: make(map[string]*Factorizer),
 		path:        path,
-		NoSync:      noSync,
-		MaxDBs:      maxDBs,
-		MaxReaders:  maxReaders,
 	}
 }
 
@@ -93,7 +88,7 @@ func (db *db) Open() error {
 	db.shards = make([]*shard, 0)
 	for i := 0; i < shardCount; i++ {
 		db.shards = append(db.shards, newShard(db.shardPath(i)))
-		if err := db.shards[i].Open(db.MaxDBs, db.MaxReaders, options(db.NoSync)); err != nil {
+		if err := db.shards[i].Open(); err != nil {
 			db.close()
 			return err
 		}
@@ -183,9 +178,6 @@ func (db *db) factorizer(tablespace string) (*Factorizer, error) {
 
 	// Otherwise create a new factorizer for the table.
 	f := NewFactorizer()
-	f.NoSync = db.NoSync
-	f.MaxDBs = db.MaxDBs
-	f.MaxReaders = db.MaxReaders
 
 	path := filepath.Join(db.factorsPath(), tablespace)
 	if err := f.Open(path); err != nil {
@@ -291,14 +283,10 @@ func (db *db) Drop(tablespace string) error {
 	return err
 }
 
-func (db *db) Stats() ([]*Stat, error) {
-	stats := make([]*Stat, 0, len(db.shards))
+func (db *db) Stats() []*bolt.Stats {
+	stats := make([]*bolt.Stats, 0, len(db.shards))
 	for _, shard := range db.shards {
-		stat, err := shard.Stat()
-		if err != nil {
-			return stats, err
-		}
-		stats = append(stats, stat)
+		stats = append(stats, shard.Stats())
 	}
-	return stats, nil
+	return stats
 }

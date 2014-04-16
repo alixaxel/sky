@@ -19,58 +19,18 @@ type shard struct {
 	db  *bolt.DB
 }
 
-type Stat struct {
-	Entries      uint64 `json:"entries"` // Number of data items
-	Size         uint64 `json:"size"`    // Size of the data memory map
-	Depth        uint   `json:"depth"`   // Depth (height) of the B-tree
-	Transactions struct {
-		Last uint64 `json:"last"` // ID of the last committed transaction
-	} `json:"transactions"`
-	Readers struct {
-		Max     uint `json:"max"`     // maximum number of threads for the environment
-		Current uint `json:"current"` // maximum number of threads used in the environment
-	} `json:"readers"`
-	Pages struct {
-		Last     uint64 `json:"last"`     // ID of the last used page
-		Size     uint   `json:"size"`     // Size of a database page. This is currently the same for all databases.
-		Branch   uint64 `json:"branch"`   // Number of internal (non-leaf) pages
-		Leaf     uint64 `json:"leaf"`     // Number of leaf pages
-		Overflow uint64 `json:"overflow"` // Number of overflow pages
-	} `json:"pages"`
-}
-
 // newShard creates a new shard.
 func newShard(path string) *shard {
 	return &shard{path: path}
 }
 
-func (s *shard) Stat() (*Stat, error) {
-	stat, err := s.env.Stat()
-	if err != nil {
-		return nil, err
-	}
-	info, err := s.env.Info()
-	if err != nil {
-		return nil, err
-	}
-	ss := &Stat{
-		Entries: stat.Entries,
-		Size:    info.MapSize,
-		Depth:   stat.Depth,
-	}
-	ss.Transactions.Last = info.LastTxnID
-	ss.Readers.Max = info.MaxReaders
-	ss.Readers.Current = info.NumReaders
-	ss.Pages.Last = info.LastPNO
-	ss.Pages.Size = stat.PSize
-	ss.Pages.Branch = stat.BranchPages
-	ss.Pages.Leaf = stat.LeafPages
-	ss.Pages.Overflow = stat.OverflowPages
-	return ss, nil
+func (s *shard) Stats() *bolt.Stats {
+	stats := s.db.Stats()
+	return &stats
 }
 
 // Open allocates a new LMDB environment.
-func (s *shard) Open(options uint) error {
+func (s *shard) Open() error {
 	s.Lock()
 	defer s.Unlock()
 	s.close()
@@ -112,7 +72,7 @@ func (s *shard) Cursor(tablespace string) (*bolt.Cursor, error) {
 		return nil, fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
 
-	c := bucket.Cursor()
+	c := table.Cursor()
 	if c == nil {
 		txn.Rollback()
 		return nil, fmt.Errorf("failed to create cursor (%s)", tablespace)
@@ -129,11 +89,11 @@ func (s *shard) InsertEvent(tablespace string, id string, event *core.Event) err
 
 	txn, table, err := s.table(tablespace, false)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
+		return fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
 	defer txn.Rollback()
 
-	if err := s.insertEvent(bucket, id, core.ShiftTimeBytes(event.Timestamp), event.Data); err != nil {
+	if err := s.insertEvent(table, id, core.ShiftTimeBytes(event.Timestamp), event.Data); err != nil {
 		return err
 	}
 	txn.Commit()
@@ -164,7 +124,7 @@ func (s *shard) insertEvent(table *bolt.Bucket, id string, timestamp []byte, dat
 	object := table.Bucket([]byte(id))
 	if object == nil {
 		if err := table.CreateBucket([]byte(id)); err != nil {
-			return nil, fmt.Errorf("failed to create object: %s (id=%s)", err, id)	
+			return fmt.Errorf("failed to create object: %s (id=%s)", err, id)	
 		}
 		object = table.Bucket([]byte(id))
 	}
@@ -204,7 +164,7 @@ func (s *shard) GetEvent(tablespace string, id string, timestamp time.Time) (*co
 
 	txn, table, err := s.table(tablespace, true)
 	if err != nil {
-		return fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
+		return nil, fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
 	defer txn.Rollback()
 
@@ -255,7 +215,7 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 
 	txn, table, err := s.table(tablespace, true)
 	if err != nil {
-		return fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
+		return nil, fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
 	defer txn.Rollback()
 
@@ -265,7 +225,7 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 	}
 
 	c := object.Cursor()
-	if c = nil {
+	if c == nil {
 		return nil, fmt.Errorf("failed to open cursor: %s (%s)", id, tablespace)
 	}
 

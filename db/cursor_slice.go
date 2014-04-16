@@ -1,15 +1,13 @@
 package db
 
-import "github.com/szferi/gomdb"
+import "github.com/boltdb/bolt"
 
-// Cursors is a list of LMDB cursor objects.
-type Cursors []*mdb.Cursor
+// Cursors is a list of read cursors.
+type Cursors []*bolt.Cursor
 
 // Close deallocates all cursor resources.
 func (s Cursors) Close() {
 	for _, c := range s {
-		txn := c.Txn()
-		c.Close()
-		txn.Commit()
+		c.Tx().Rollback()
 	}
 }
