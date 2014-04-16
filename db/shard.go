@@ -245,7 +245,7 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 		// Decode data.
 		var handle codec.MsgpackHandle
 		handle.RawToString = true
-		if err := codec.NewDecoder(bytes.NewBuffer(val[8:]), &handle).Decode(&event.Data); err != nil {
+		if err := codec.NewDecoder(bytes.NewBuffer(val), &handle).Decode(&event.Data); err != nil {
 			return nil, err
 		}
 		for k, v := range event.Data {

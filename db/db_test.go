@@ -167,6 +167,8 @@ func TestDBReopen(t *testing.T) {
 
 		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
 		assert.Nil(t, err, "")
+		assert.NotNil(t, e, "")
+		if e == nil {return}
 		assert.Equal(t, e.Timestamp, musttime("2000-01-01T00:00:00Z"), "")
 		assert.Equal(t, e.Data[1], "john", "")
 	})

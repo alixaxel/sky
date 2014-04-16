@@ -4,6 +4,7 @@ import (
 	"io/ioutil"
 	"os"
 	"testing"
+	"path/filepath"
 
 	"github.com/stretchr/testify/assert"
 )
@@ -97,7 +98,7 @@ func withShard(f func(*shard)) {
 	path, _ := ioutil.TempDir("", "")
 	defer os.RemoveAll(path)
 
-	s := newShard(path)
+	s := newShard(filepath.Join(path,"shard-test"))
 	if err := s.Open(); err != nil {
 		panic(err.Error())
 	}
