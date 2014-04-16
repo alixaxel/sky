@@ -112,9 +112,13 @@ func (s *shard) insertEvent(table *bolt.Bucket, id string, timestamp []byte, dat
 		}
 		data = old
 	}
+    // Encode timestamp.
+    var b bytes.Buffer
+    if _, err := b.Write(timestamp); err != nil {
+	    return err
+    }
 
 	// Encode data.
-	var b bytes.Buffer
 	var handle codec.MsgpackHandle
 	handle.RawToString = true
 	if err := codec.NewEncoder(&b, &handle).Encode(data); err != nil {
@@ -197,11 +201,15 @@ func (s *shard) getEvent(table *bolt.Bucket, id string, timestamp []byte) (map[i
 		return nil, nil	
 	}
 
+	if !bytes.Equal(timestamp, event[0:8]) {
+		return nil,nil 
+	}
+	
 	// Decode data.
 	var data = make(map[int64]interface{})
 	var handle codec.MsgpackHandle
 	handle.RawToString = true
-	if err := codec.NewDecoder(bytes.NewBuffer(event), &handle).Decode(&data); err != nil {
+	if err := codec.NewDecoder(bytes.NewBuffer(event[8:]), &handle).Decode(&data); err != nil {
 		return nil, err
 	}
 	for k, v := range data {
@@ -245,7 +253,7 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 		// Decode data.
 		var handle codec.MsgpackHandle
 		handle.RawToString = true
-		if err := codec.NewDecoder(bytes.NewBuffer(val), &handle).Decode(&event.Data); err != nil {
+		if err := codec.NewDecoder(bytes.NewBuffer(val[8:]), &handle).Decode(&event.Data); err != nil {
 			return nil, err
 		}
 		for k, v := range event.Data {
