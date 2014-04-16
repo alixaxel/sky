@@ -9,14 +9,6 @@ import (
 	"github.com/stretchr/testify/assert"
 )
 
-func TestShardGetEventFromEmptyEnv(t *testing.T) {
-	withShard(func(s *shard) {
-		e, err := s.GetEvent("tbl0", "obj0", musttime("2000-01-01T00:00:00Z"))
-		assert.Nil(t, e, "")
-		assert.Nil(t, err, "")
-	})
-}
-
 func TestShardInsertEvent(t *testing.T) {
 	withShard(func(s *shard) {
 		s.InsertEvent("tbl0", "obj0", testevent("2000-01-01T00:00:00Z", 1, "john"))

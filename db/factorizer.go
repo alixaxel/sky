@@ -51,7 +51,6 @@ func (f *Factorizer) Open(dbPath string) error {
 
 	// Initialize and open the database.
 	f.path = dbPath
-	fmt.Println(f.path)
 	if err = os.MkdirAll(path.Dir(f.path), 0700); err != nil {
 		return err
 	}
