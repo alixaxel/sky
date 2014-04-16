@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -23,7 +22,7 @@ type DB interface {
 	Open() error
 	Close()
 	Factorizer(tablespace string) (*Factorizer, error)
-	Cursors(tablespace string) (Cursors, error)
+	Cursors(tablespace string) (Cursors, []error)
 	GetEvent(tablespace string, id string, timestamp time.Time) (*core.Event, error)
 	GetEvents(tablespace string, id string) ([]*core.Event, error)
 	InsertEvent(tablespace string, id string, event *core.Event) error
@@ -134,7 +133,7 @@ func (db *db) shardCount() (int, error) {
 	count := 0
 	for _, info := range infos {
 		index, err := strconv.Atoi(info.Name())
-		if info.IsDir() && err == nil && (index+1) > count {
+		if err == nil && (index+1) > count {
 			count = index + 1
 		}
 	}
@@ -191,17 +190,22 @@ func (db *db) factorizer(tablespace string) (*Factorizer, error) {
 }
 
 // Cursors retrieves a set of cursors for iterating over the database.
-func (db *db) Cursors(tablespace string) (Cursors, error) {
+func (db *db) Cursors(tablespace string) (Cursors, []error) {
 	cursors := make(Cursors, 0)
+	errors := make([]error,0)
 	for _, s := range db.shards {
 		c, err := s.Cursor(tablespace)
-		if err != nil {
-			cursors.Close()
-			return nil, fmt.Errorf("db cursors error: %s", err)
+		if err == nil {
+			cursors = append(cursors, c)
+		} else {
+			errors = append(errors, err)
 		}
-		cursors = append(cursors, c)
 	}
-	return cursors, nil
+	if len(errors) > 0 {
+		return cursors, errors
+	} else {
+		return cursors, nil
+	}
 }
 
 func (db *db) GetEvent(tablespace string, id string, timestamp time.Time) (*core.Event, error) {

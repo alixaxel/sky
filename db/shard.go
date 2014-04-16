@@ -292,7 +292,7 @@ func (s *shard) DeleteObject(tablespace, id string) error {
 	if err != nil {
 		return fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
-	txn.Rollback()
+	defer txn.Rollback()
 
 	// Delete the key.
 	if err = table.DeleteBucket([]byte(id)); err != nil {

@@ -178,10 +178,10 @@ func TestDBCursors(t *testing.T) {
 	withDB(func(db *db) {
 		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
 		db.InsertEvent("foo", "baz", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		cursors, err := db.Cursors("foo")
+		cursors, errs := db.Cursors("foo")
 		defer cursors.Close()
-		assert.Nil(t, err, "")
-
+		assert.True(t, len(cursors) > 0)
+		assert.Equal(t, len(cursors) + len(errs), len(db.shards))
 		keys := make([]string, 0)
 		for _, c := range cursors {
 			for key, _ := c.First(); key != nil; key, _ = c.Next() {
@@ -208,7 +208,7 @@ func TestDBDrop(t *testing.T) {
 		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
 		db.Drop("foo")
 		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		assert.Nil(t, err, "")
+		assert.NotNil(t, err, "")
 		assert.Nil(t, e, "")
 	})
 }
