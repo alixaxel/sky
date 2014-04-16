@@ -36,9 +36,6 @@ func init() {
 	flag.UintVar(&config.Port, "p", config.Port, "the port to listen on")
 	flag.StringVar(&config.DataPath, "data-path", config.DataPath, "the data directory")
 	flag.StringVar(&config.PidPath, "pid-path", config.PidPath, "the path to the pid file")
-	flag.BoolVar(&config.NoSync, "nosync", config.NoSync, "use mdb.NOSYNC option, or not")
-	flag.UintVar(&config.MaxDBs, "max-dbs", config.MaxDBs, "max number of named btrees in the database (mdb.MaxDBs)")
-	flag.UintVar(&config.MaxReaders, "max-readers", config.MaxReaders, "max number of concurrenly executing queries (mdb.MaxReaders)")
 	flag.StringVar(&configPath, "config", "", "the path to the config file")
 	flag.UintVar(&config.StreamFlushPeriod, "stream-flush-period", config.StreamFlushPeriod, "time period on which to flush streamed events")
 	flag.UintVar(&config.StreamFlushThreshold, "stream-flush-threshold", config.StreamFlushThreshold, "the maximum number of events (per table) in event stream before flush")
@@ -69,9 +66,6 @@ func main() {
 
 	// Initialize
 	s := server.NewServer(config.Port, config.DataPath)
-	s.NoSync = config.NoSync
-	s.MaxDBs = config.MaxDBs
-	s.MaxReaders = config.MaxReaders
 	s.StreamFlushPeriod = config.StreamFlushPeriod
 	s.StreamFlushThreshold = config.StreamFlushThreshold
 	writePidFile()

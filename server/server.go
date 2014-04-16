@@ -44,9 +44,6 @@ type Server struct {
 	shutdownChannel      chan bool
 	shutdownFinished     chan bool
 	mutex                sync.Mutex
-	NoSync               bool
-	MaxDBs               uint
-	MaxReaders           uint
 	StreamFlushPeriod    uint
 	StreamFlushThreshold uint
 }
@@ -85,9 +82,6 @@ func NewServer(port uint, path string) *Server {
 		logger:               log.New(os.Stdout, "", log.LstdFlags),
 		path:                 path,
 		tables:               make(map[string]*core.Table),
-		NoSync:               false,
-		MaxDBs:               4096,
-		MaxReaders:           126,
 		StreamFlushPeriod:    60, // seconds
 		StreamFlushThreshold: 1000,
 	}
