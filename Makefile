@@ -22,7 +22,7 @@ get: env
 	$(GO) get github.com/stretchr/testify
 	$(GO) get -d ./...
 
-build: env get
+build: get
 	$(GO) build -a -o bin/skyd ./skyd/main.go
 
 test:

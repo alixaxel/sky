@@ -427,7 +427,7 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 
 	// Initialize one execution engine for each servlet.
 	var data interface{}
-	for index, c := range cursors {
+	for index, _ := range cursors {
 		// Create an engine for each cursor. The execution engine is
 		// protected by a mutex so it's safe to destroy it at any time.
 		subengine, err := query.NewExecutionEngine(q)
@@ -436,11 +436,11 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 		}
 		defer subengine.Destroy()
 
-		if err = subengine.SetLmdbCursor(c); err != nil {
-			subengine.Destroy()
-			cursors.Close()
-			return nil, fmt.Errorf("execution engine cursor error: %s", err)
-		}
+		// if err = subengine.SetLmdbCursor(c); err != nil {
+		// 	subengine.Destroy()
+		// 	cursors.Close()
+		// 	return nil, fmt.Errorf("execution engine cursor error: %s", err)
+		// }
 
 		engines = append(engines, subengine)
 
