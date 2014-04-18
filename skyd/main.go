@@ -110,10 +110,13 @@ func handleProfileSignal() {
 	var p interface {
 		Stop()
 	}
+
+	// Attach listener for SIGUSR1.
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGUSR1)
+
 	for {
-		// Wait for SIGUSR1
-		c := make(chan os.Signal, 1)
-		signal.Notify(c, syscall.SIGUSR1)
+		// Wait for next signal.
 		<-c
 
 		// Toggle profiling on and off.
