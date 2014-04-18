@@ -3,12 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/skydb/sky/server"
-	. "github.com/skydb/sky/skyd/config"
 	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
+	"syscall"
+
+	"github.com/davecheney/profile"
+	"github.com/skydb/sky/server"
+	. "github.com/skydb/sky/skyd/config"
 )
 
 //------------------------------------------------------------------------------
@@ -69,7 +72,8 @@ func main() {
 	s.StreamFlushPeriod = config.StreamFlushPeriod
 	s.StreamFlushThreshold = config.StreamFlushThreshold
 	writePidFile()
-	setupSignalHandlers(s)
+	// setupSignalHandlers(s)
+	go handleProfileSignal()
 
 	// Start the server up!
 	c := make(chan bool)
@@ -99,6 +103,27 @@ func setupSignalHandlers(s *server.Server) {
 			os.Exit(1)
 		}
 	}()
+}
+
+// Waits for the SIGUSR1 signal and toggles profiling on and off.
+func handleProfileSignal() {
+	var p interface {
+		Stop()
+	}
+	for {
+		// Wait for SIGUSR1
+		c := make(chan os.Signal, 1)
+		signal.Notify(c, syscall.SIGUSR1)
+		<-c
+
+		// Toggle profiling on and off.
+		if p == nil {
+			p = profile.Start(&profile.Config{CPUProfile: true, MemProfile: true, BlockProfile: true})
+		} else {
+			p.Stop()
+			p = nil
+		}
+	}
 }
 
 //--------------------------------------
