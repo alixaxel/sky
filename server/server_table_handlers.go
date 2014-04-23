@@ -3,7 +3,6 @@ package server
 import (
 	"errors"
 	"net/http"
-	"sort"
 
 	"github.com/gorilla/mux"
 	"github.com/skydb/sky/core"
@@ -72,22 +71,25 @@ func (s *Server) deleteTableHandler(w http.ResponseWriter, req *http.Request, pa
 
 // GET /tables/:name/objects/keys
 func (s *Server) tableKeysHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
-	vars := mux.Vars(req)
-	t, err := s.OpenTable(vars["name"])
-	if err != nil {
-		return nil, err
-	}
-
-	cursors := s.db.Cursors(t.Name)
-	defer cursors.Close()
-
-	keys := []string{}
-	for _, c := range cursors {
-		for bkey, _ := c.First(); bkey != nil; bkey, _ = c.Next() {
-			keys = append(keys, string(bkey))
+	/*
+		vars := mux.Vars(req)
+		t, err := s.OpenTable(vars["name"])
+		if err != nil {
+			return nil, err
 		}
-	}
-	sort.Strings(keys)
 
-	return keys, nil
+		cursors := s.db.Cursors(t.Name)
+		defer cursors.Close()
+
+		keys := []string{}
+		for _, c := range cursors {
+			for bkey, _ := c.First(); bkey != nil; bkey, _ = c.Next() {
+				keys = append(keys, string(bkey))
+			}
+		}
+		sort.Strings(keys)
+
+		return keys, nil
+	*/
+	return nil, nil
 }

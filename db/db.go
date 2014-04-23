@@ -9,8 +9,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/skydb/sky/core"
 	"github.com/boltdb/bolt"
+	"github.com/skydb/sky/core"
 )
 
 var defaultShardCount = runtime.NumCPU()
@@ -22,7 +22,7 @@ type DB interface {
 	Open() error
 	Close()
 	Factorizer(tablespace string) (*Factorizer, error)
-	Cursors(tablespace string) Cursors
+	Buckets(tablespace string) []*bolt.Bucket
 	GetEvent(tablespace string, id string, timestamp time.Time) (*core.Event, error)
 	GetEvents(tablespace string, id string) ([]*core.Event, error)
 	InsertEvent(tablespace string, id string, event *core.Event) error
@@ -189,16 +189,16 @@ func (db *db) factorizer(tablespace string) (*Factorizer, error) {
 	return f, nil
 }
 
-// Cursors retrieves a set of cursors for iterating over the database.
-func (db *db) Cursors(tablespace string) Cursors {
-	cursors := make(Cursors, 0)
+// Buckets retrieves a set of buckets for iterating over a table.
+func (db *db) Buckets(tablespace string) []*bolt.Bucket {
+	buckets := make([]*bolt.Bucket, 0)
 	for _, s := range db.shards {
-		c, err := s.Cursor(tablespace)
+		b, err := s.Bucket(tablespace)
 		if err == nil {
-			cursors = append(cursors, c)
+			buckets = append(buckets, b)
 		}
 	}
-	return cursors
+	return buckets
 }
 
 func (db *db) GetEvent(tablespace string, id string, timestamp time.Time) (*core.Event, error) {

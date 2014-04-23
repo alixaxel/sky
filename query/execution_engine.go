@@ -1,7 +1,7 @@
 package query
 
 /*
-#cgo LDFLAGS: -L/usr/local/lib -llmdb -lluajit-5.1
+#cgo LDFLAGS: -L/usr/local/lib -lluajit-5.1
 #cgo CFLAGS: -I/usr/local/include
 
 #include <stdio.h>
@@ -9,13 +9,342 @@ package query
 #include <stdbool.h>
 #include <inttypes.h>
 #include <string.h>
-#include <lmdb.h>
 #include <luajit-2.0/lua.h>
 #include <luajit-2.0/lualib.h>
 #include <luajit-2.0/lauxlib.h>
 
 int mp_pack(lua_State *L);
 int mp_unpack(lua_State *L);
+
+
+//==============================================================================
+//
+// BOLT
+//
+//==============================================================================
+
+//------------------------------------------------------------------------------
+// Constants
+//------------------------------------------------------------------------------
+
+// This represents the maximum number of levels that a cursor can traverse.
+#define MAX_DEPTH   64
+
+// These flags mark the type of page and are set in the page.flags.
+#define PAGE_BRANCH   0x01
+#define PAGE_LEAF     0x02
+#define PAGE_META     0x04
+#define PAGE_FREELIST 0x10
+
+
+//------------------------------------------------------------------------------
+// Typedefs
+//------------------------------------------------------------------------------
+
+// These types MUST have the same layout as their corresponding Go types
+
+typedef int64_t pgid;
+
+// Page represents a header struct of a block in the mmap.
+typedef struct page {
+    pgid     id;
+    uint16_t flags;
+    uint16_t count;
+    uint32_t overflow;
+} page;
+
+typedef struct bucket {
+    pgid     root;
+    uint64_t sequence;
+} bucket;
+
+// The branch element represents an a item in a branch page
+// that points to a child page.
+typedef struct branch_element {
+    uint32_t pos;
+    uint32_t ksize;
+    pgid     pgid;
+} branch_element;
+
+// The leaf element represents an a item in a leaf page
+// that points to a key/value pair.
+typedef struct leaf_element {
+    uint32_t flags;
+    uint32_t pos;
+    uint32_t ksize;
+    uint32_t vsize;
+} leaf_element;
+
+// elem_ref represents a pointer to an element inside of a page.
+// It is used by the cursor stack to track the position at each level.
+typedef struct elem_ref {
+    page     *page;
+    uint16_t index;
+} elem_ref;
+
+// bolt_val represents a pointer to a fixed-length series of bytes.
+// It is used to represent keys and values returned by the cursor.
+typedef struct bolt_val {
+    uint32_t size;
+    void     *data;
+} bolt_val;
+
+// bolt_cursor represents a cursor attached to a bucket.
+typedef struct bolt_cursor {
+    void     *data;
+    pgid     root;
+    size_t   pgsz;
+    int      top;
+    elem_ref stack[MAX_DEPTH];
+} bolt_cursor;
+
+
+//------------------------------------------------------------------------------
+// Forward Declarations
+//------------------------------------------------------------------------------
+
+elem_ref *cursor_push(bolt_cursor *c, pgid id);
+
+elem_ref *cursor_current(bolt_cursor *c);
+
+elem_ref *cursor_pop(bolt_cursor *c);
+
+void cursor_key_value(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *flags);
+
+void cursor_search(bolt_cursor *c, bolt_val key, pgid id);
+
+void cursor_search_branch(bolt_cursor *c, bolt_val key);
+
+void cursor_search_leaf(bolt_cursor *c, bolt_val key);
+
+//------------------------------------------------------------------------------
+// Public Functions
+//------------------------------------------------------------------------------
+
+// Initializes a cursor.
+void bolt_cursor_init(bolt_cursor *c, void *data, size_t pgsz, pgid root) {
+    c->data = data;
+    c->root = root;
+    c->pgsz = pgsz;
+    c->top = -1;
+}
+
+// Positions the cursor to the first leaf element and returns the key/value pair.
+void bolt_cursor_first(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *flags) {
+    fprintf(stderr, "bolt_cursor_first.0\n");
+
+    // reset stack to initial state
+    elem_ref *ref = cursor_push(c, c->root);
+
+    fprintf(stderr, "bolt_cursor_first.1\n");
+
+    // Find first leaf and return key/value.
+    cursor_key_value(c, key, value, flags);
+
+    fprintf(stderr, "bolt_cursor_first.2\n");
+}
+
+// Positions the cursor to the next leaf element and returns the key/value pair.
+void bolt_cursor_next(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *flags) {
+    int i;
+    elem_ref *ref;
+
+    // Attempt to move over one element until we're successful.
+    // Move up the stack as we hit the end of each page in our stack.
+    for (ref = cursor_current(c); ref != NULL; ref = cursor_current(c)) {
+        ref->index++;
+        if (ref->index < ref->page->count) break;
+        cursor_pop(c);
+    };
+
+    // Find first leaf and return key/value.
+    cursor_key_value(c, key, value, flags);
+}
+
+// Positions the cursor first leaf element starting from a given key.
+// If there is a matching key then the cursor will be place on that key.
+// If there not a match then the cursor will be placed on the next key, if available.
+void bolt_cursor_seek(bolt_cursor *c, bolt_val seek, bolt_val *key, bolt_val *value, uint32_t *flags) {
+    // Start from root page/node and traverse to correct page.
+    cursor_push(c, c->root);
+    if (seek.size > 0) cursor_search(c, seek, c->root);
+
+    // Find first leaf and return key/value.
+    cursor_key_value(c, key, value, flags);
+}
+
+
+//------------------------------------------------------------------------------
+// Private Functions
+//------------------------------------------------------------------------------
+
+// Push ref to the first element of the page onto the cursor stack
+// If the page is the root page reset the stack to initial state
+elem_ref *cursor_push(bolt_cursor *c, pgid id) {
+    elem_ref *ref;
+    if (id == c->root)
+        c->top = 0;
+    else
+        c->top++;
+    ref = &(c->stack[c->top]);
+    ref->page = (page *)(c->data + (c->pgsz * id));
+    ref->index = 0;
+    return ref;
+}
+
+// Return current element ref from the cursor stack
+// If stack is empty return null
+elem_ref *cursor_current(bolt_cursor *c) {
+    if (c->top < 0) return NULL;
+    return &c->stack[c->top];
+}
+
+// Pop current element ref off the cursor stack
+// If stack is empty return null
+elem_ref *cursor_pop(bolt_cursor *c) {
+    elem_ref *ref = cursor_current(c);
+    if (ref != NULL) c->top--;
+    return ref;
+}
+
+// Returns the branch element at a given index on a given page.
+branch_element *page_branch_element(page *p, uint16_t index) {
+    branch_element *elements = (branch_element*)((void*)(p) + sizeof(page));
+    return &elements[index];
+}
+
+// Returns the leaf element at a given index on a given page.
+leaf_element *page_leaf_element(page *p, uint16_t index) {
+    leaf_element *elements = (leaf_element*)((void*)(p) + sizeof(page));
+    return &elements[index];
+}
+
+// Returns the key/value pair for the current position of the cursor.
+void cursor_key_value(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *flags) {
+    fprintf(stderr, "cursor_key_value.0\n");
+
+    elem_ref *ref = cursor_current(c);
+
+    fprintf(stderr, "cursor_key_value.1 %p %p\n", ref, ref->page);
+
+    // If stack or current page is empty return null.
+    if (ref == NULL || ref->page->count == 0) {
+    fprintf(stderr, "cursor_key_value.2\n");
+        key->size = value->size = 0;
+        key->data = value->data = NULL;
+        *flags = 0;
+        return;
+    };
+    fprintf(stderr, "cursor_key_value.3\n");
+
+    // Descend to the current leaf page if we're on branch page.
+    while (ref->page->flags & PAGE_BRANCH) {
+    fprintf(stderr, "cursor_key_value.4\n");
+        branch_element *elem = page_branch_element(ref->page,ref->index);
+        ref = cursor_push(c, elem->pgid);
+    };
+    fprintf(stderr, "cursor_key_value.5\n");
+
+    leaf_element *elem = page_leaf_element(ref->page,ref->index);
+
+    // Assign key pointer.
+    key->size = elem->ksize;
+    key->data = ((void*)elem) + elem->pos;
+
+    // Assign value pointer.
+    value->size = elem->vsize;
+    value->data = key->data + key->size;
+
+    // Return the element flags.
+    *flags = elem->flags;
+}
+
+// Recursively performs a binary search against a given page/node until it finds a given key.
+void cursor_search(bolt_cursor *c, bolt_val key, pgid id) {
+    // Push page onto the cursor stack.
+    elem_ref *ref = cursor_push(c, id);
+
+    // int len = key.size > 10 ? 10 : key.size;
+    // printf("\npage=%d, depth=%d, seek=...%.*s[%d]", (int)id, c->top, len, ((char*)(key.data)) + key.size - len, key.size);
+
+    // If we're on a leaf page/node then find the specific node.
+    if (ref->page->flags & PAGE_LEAF) {
+        cursor_search_leaf(c, key);
+        return;
+    }
+
+    // Otherwise search the branch page.
+    cursor_search_branch(c, key);
+}
+
+// Recursively search over a leaf page for a key.
+void cursor_search_leaf(bolt_cursor *c, bolt_val key) {
+    elem_ref *ref = cursor_current(c);
+    int i;
+
+    // HACK: Simply loop over elements to find the right one. Replace with a binary search.
+    leaf_element *elems = (leaf_element*)((void*)(ref->page) + sizeof(page));
+    for (i=0; i<ref->page->count; i++) {
+        leaf_element *elem = &elems[i];
+        int rc = memcmp(key.data, ((void*)elem) + elem->pos, (elem->ksize < key.size ? elem->ksize : key.size));
+
+        // int len = key.size > 10 ? 10 : key.size;
+        // printf("\n?L rc=%d; elem=...%.*s[%d]", rc, len, ((char*)elem) + elem->pos + elem->ksize - len, elem->ksize);
+        if ((rc == 0 && key.size <= elem->ksize) || rc < 0) {
+            ref->index = i;
+            return;
+        }
+    }
+
+    // If nothing was greater than the key then pop the current page off the stack.
+    cursor_pop(c);
+}
+
+// Recursively search over a branch page for a key.
+void cursor_search_branch(bolt_cursor *c, bolt_val key) {
+    elem_ref *ref = cursor_current(c);
+    int i;
+
+    // HACK: Simply loop over elements to find the right one. Replace with a binary search.
+    branch_element *elems = (branch_element*)((void*)(ref->page) + sizeof(page));
+    for (i=0; i<ref->page->count; i++) {
+        branch_element *elem = &elems[i];
+        int rc = memcmp(key.data, ((void*)elem) + elem->pos, (elem->ksize < key.size ? elem->ksize : key.size));
+
+        // int len = key.size > 10 ? 10 : key.size;
+        // printf("\n?B rc=%d; elem=...%.*s[%d]", rc, len, ((char*)elem) + elem->pos + elem->ksize - len, elem->ksize);
+        if (rc == 0 && key.size == elem->ksize) {
+            // Exact match, done.
+            ref->index = i;
+            return;
+        } else if ((rc == 0 && key.size < elem->ksize) || rc < 0) {
+            // If key is less than anything in this subtree we are done.
+            // This should really only happen for key that's less than anything in the tree.
+            if (i == 0) return;
+            // Otherwise search the previous subtree.
+            cursor_search(c, key, elems[i-1].pgid);
+            // Didn't find anything greater than key?
+            if (cursor_current(c) == ref)
+                ref->index = i;
+            else
+                ref->index = i-1;
+            return;
+        }
+    }
+
+    // If nothing was greater than the key then search the last child.
+    cursor_search(c, key, elems[ref->page->count-1].pgid);
+    // If still didn't find anything greater than key, then pop the page off the stack.
+    if (cursor_current(c) == ref)
+        cursor_pop(c);
+    else
+        ref->index = ref->page->count-1;
+}
+
+
+
+
+
 
 //==============================================================================
 //
@@ -129,7 +458,8 @@ struct sky_cursor {
 
     void *key_prefix;
     uint32_t key_prefix_sz;
-    MDB_cursor* lmdb_cursor;
+    bolt_cursor object_cursor;
+    bolt_cursor event_cursor;
 };
 
 //==============================================================================
@@ -397,12 +727,16 @@ void sky_cursor_set_property(sky_cursor *cursor, int64_t property_id,
 //--------------------------------------
 
 // Sets up object after cursor has already been positioned.
-bool sky_cursor_iter_object(sky_cursor *cursor, MDB_val *key, MDB_val *data)
+bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
 {
-    if(cursor->key_prefix != NULL && (key->mv_size < cursor->key_prefix_sz || memcmp(cursor->key_prefix, key->mv_data, cursor->key_prefix_sz) != 0)) {
+    fprintf(stderr, "sky_cursor_iter_object.0\n");
+
+    if(cursor->key_prefix != NULL && (key->size < cursor->key_prefix_sz || memcmp(cursor->key_prefix, key->data, cursor->key_prefix_sz) != 0)) {
         return false;
     }
     // fprintf(stderr, "\nOBJ (%.*s) [%d]\n", (int)key->mv_size, (char*)key->mv_data, (int)key->mv_size);
+
+    fprintf(stderr, "sky_cursor_iter_object.1\n");
 
     // Clear the data object if set.
     cursor->session_idle_in_sec = 0;
@@ -410,10 +744,27 @@ bool sky_cursor_iter_object(sky_cursor *cursor, MDB_val *key, MDB_val *data)
     cursor->next_event->eof = false;
     memset(cursor->event, 0, cursor->event_sz);
 
-    // Read first event into "next" event.
-    if(!sky_cursor_read(cursor, cursor->next_event, data->mv_data)) {
+    fprintf(stderr, "sky_cursor_iter_object.2\n");
+
+    // Extract the bucket from the object cursor and init event cursor.
+    bucket *b = (bucket*)data->data;
+    cursor->event_cursor.root = b->root;
+    cursor->event_cursor.top = -1;
+
+    fprintf(stderr, "sky_cursor_iter_object.3\n");
+
+    // Read the first event into the cursor buffer.
+    uint32_t flags;
+    bolt_val event_key, event_data;
+    bolt_cursor_first(&cursor->event_cursor, &event_key, &event_data, &flags);
+
+    fprintf(stderr, "sky_cursor_iter_object.4\n");
+
+    if(!sky_cursor_read(cursor, cursor->next_event, event_data.data)) {
         return false;
     }
+
+    fprintf(stderr, "sky_cursor_iter_object.5\n");
 
     // Move "next" event to current event and put the next event in buffer.
     return sky_cursor_next_event(cursor);
@@ -423,25 +774,26 @@ bool sky_cursor_iter_object(sky_cursor *cursor, MDB_val *key, MDB_val *data)
 // move to the first object that with the given prefix.
 bool sky_cursor_first_object(sky_cursor *cursor)
 {
-    int rc;
-    MDB_val key, data;
+    fprintf(stderr, "sky_cursor_first_object.0\n");
+
+    uint32_t flags;
+    bolt_val key, data, seek;
 
     if(cursor->key_prefix == NULL) {
-        if((rc = mdb_cursor_get(cursor->lmdb_cursor, &key, &data, MDB_FIRST)) != 0) {
-            if(rc != MDB_NOTFOUND) fprintf(stderr, "MDB_FIRST error: %d\n", rc);
+        bolt_cursor_first(&cursor->object_cursor, &key, &data, &flags);
+        if (key.size == 0) {
             return false;
         }
 
     } else {
-        key.mv_data = cursor->key_prefix;
-        key.mv_size = cursor->key_prefix_sz;
-        if((rc = mdb_cursor_get(cursor->lmdb_cursor, &key, &data, MDB_SET_RANGE)) != 0) {
-            if(rc != MDB_NOTFOUND) fprintf(stderr, "MDB_SET_RANGE error: %d\n", rc);
+        seek.data = cursor->key_prefix;
+        seek.size = cursor->key_prefix_sz;
+        bolt_cursor_seek(&cursor->object_cursor, seek, &key, &data, &flags);
+
+        if (key.size == 0) {
             return false;
         }
     }
-
-//    fprintf(stderr, "DATA: sz=%d\n", (int)data.mv_size);
 
     return sky_cursor_iter_object(cursor, &key, &data);
 }
@@ -449,10 +801,13 @@ bool sky_cursor_first_object(sky_cursor *cursor)
 // Moves the cursor to point to the next object.
 bool sky_cursor_next_object(sky_cursor *cursor)
 {
+    fprintf(stderr, "sky_cursor_next_object.0\n");
+
     // Move to next object.
-    MDB_val key, data;
-    int rc = mdb_cursor_get(cursor->lmdb_cursor, &key, &data, MDB_NEXT_NODUP);
-    if(rc != 0) {
+    uint32_t flags;
+    bolt_val key, data;
+    bolt_cursor_next(&cursor->object_cursor, &key, &data, &flags);
+    if(key.size == 0) {
         return false;
     }
 
@@ -463,40 +818,49 @@ bool sky_cursor_next_object(sky_cursor *cursor)
 // Returns true if the cursor moved forward, otherwise false.
 bool sky_cursor_next_event(sky_cursor *cursor)
 {
+    fprintf(stderr, "sky_cursor_next_event.0\n");
+
     // Don't allow cursor to move if we're EOF or marked as EOS wait.
     if(cursor->event->eof || (cursor->event->eos && cursor->eos_wait)) {
+    fprintf(stderr, "sky_cursor_next_event.1\n");
         return false;
     }
     cursor->eos_wait = true;
 
+    fprintf(stderr, "sky_cursor_next_event.2\n");
     // Copy variable state from current event to next event.
     if(cursor->variable_event_sz > 0) {
+    fprintf(stderr, "sky_cursor_next_event.3\n");
         uint32_t variable_event_offset = sizeof(sky_event) + cursor->action_event_sz;
         memcpy(((void*)cursor->next_event) + variable_event_offset, ((void*)cursor->event) + variable_event_offset, cursor->variable_event_sz - cursor->action_event_sz);
     }
 
+    fprintf(stderr, "sky_cursor_next_event.4\n");
     // Copy the next event to the current event.
     memcpy(cursor->event, cursor->next_event, cursor->event_sz);
 
+    fprintf(stderr, "sky_cursor_next_event.5\n");
+
     // Read the next event.
     if(!cursor->next_event->eof) {
-        MDB_val key, data;
-        int rc = mdb_cursor_get(cursor->lmdb_cursor, &key, &data, MDB_NEXT_DUP);
-        if(rc != 0) {
+    fprintf(stderr, "sky_cursor_next_event.6\n");
+        uint32_t flags;
+        bolt_val key, data;
+        bolt_cursor_next(&cursor->event_cursor, &key, &data, &flags);
+        if(key.size == 0) {
             // Clear next event if there isn't one.
             memset(cursor->next_event, 0, cursor->event_sz);
             cursor->next_event->eof = true;
-
-            if(rc != MDB_NOTFOUND) {
-                printf("lmdb cursor error: %d\n", rc);
-            }
         } else {
             cursor->next_event->eof = false;
-            if(!sky_cursor_read(cursor, cursor->next_event, data.mv_data)) {
+            if(!sky_cursor_read(cursor, cursor->next_event, data.data)) {
                 return true;
             }
         }
+    fprintf(stderr, "sky_cursor_next_event.7\n");
     }
+
+    fprintf(stderr, "sky_cursor_next_event.8\n");
 
     // Update eos.
     sky_cursor_update_eos(cursor);
@@ -723,13 +1087,14 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/skydb/sky/core"
-	"github.com/szferi/gomdb"
-	"github.com/ugorji/go/codec"
 	"regexp"
 	"sync"
 	"text/template"
 	"unsafe"
+
+	"github.com/boltdb/bolt"
+	"github.com/skydb/sky/core"
+	"github.com/ugorji/go/codec"
 )
 
 //------------------------------------------------------------------------------
@@ -741,7 +1106,6 @@ import (
 // An ExecutionEngine is used to iterate over a series of objects.
 type ExecutionEngine struct {
 	query      *Query
-	lmdbCursor *mdb.Cursor
 	cursor     *C.sky_cursor
 	state      *C.lua_State
 	header     string
@@ -816,35 +1180,13 @@ func (e *ExecutionEngine) FullAnnotatedSource() string {
 	})
 }
 
-// Sets the low-level LMDB cursor to use.
-func (e *ExecutionEngine) SetLmdbCursor(lmdbCursor *mdb.Cursor) error {
+// SetBucket sets the bucket that this engine will iterate on.
+func (e *ExecutionEngine) SetBucket(b *bolt.Bucket) {
 	e.mutex.Lock()
 	defer e.mutex.Unlock()
-	return e.setLmdbCursor(lmdbCursor)
-}
 
-func (e *ExecutionEngine) setLmdbCursor(lmdbCursor *mdb.Cursor) error {
-	// Close the old cursor (if it's not the one being set).
-	if e.lmdbCursor != nil && e.lmdbCursor != lmdbCursor {
-		txn := e.lmdbCursor.Txn()
-		e.lmdbCursor.Close()
-		if lmdbCursor == nil {
-			txn.Commit()
-		} else {
-			txn.Abort()
-		}
-	}
-	if e.cursor != nil {
-		e.cursor.lmdb_cursor = nil
-	}
-
-	// Attach the new cursor.
-	e.lmdbCursor = lmdbCursor
-	if e.lmdbCursor != nil {
-		e.cursor.lmdb_cursor = e.lmdbCursor.MdbCursor()
-	}
-
-	return nil
+	info := b.Tx().DB().Info()
+	C.bolt_cursor_init(&e.cursor.object_cursor, unsafe.Pointer(&info.Data[0]), C.size_t(info.PageSize), C.pgid(b.Root()))
 }
 
 //------------------------------------------------------------------------------
@@ -912,9 +1254,7 @@ func (e *ExecutionEngine) init() error {
 func (e *ExecutionEngine) initCursor() error {
 	// Create the cursor.
 	minPropertyId, maxPropertyId := e.query.PropertyIdentifierRange()
-	if e.cursor = C.sky_cursor_new((C.int32_t)(minPropertyId), (C.int32_t)(maxPropertyId)); e.cursor == nil {
-		return errors.New("skyd.ExecutionEngine: Unable to allocate cursor")
-	}
+	e.cursor = C.sky_cursor_new((C.int32_t)(minPropertyId), (C.int32_t)(maxPropertyId))
 
 	// Initialize the cursor from within Lua.
 	functionName := C.CString("sky_init_cursor")
@@ -945,9 +1285,6 @@ func (e *ExecutionEngine) destroy() {
 	if e.state != nil {
 		C.lua_close(e.state)
 		e.state = nil
-	}
-	if e.lmdbCursor != nil {
-		e.setLmdbCursor(nil)
 	}
 	if e.cursor != nil {
 		C.sky_cursor_free(e.cursor)

@@ -15,6 +15,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/boltdb/bolt"
 	"github.com/gorilla/mux"
 	"github.com/skydb/sky"
 	"github.com/skydb/sky/core"
@@ -412,10 +413,15 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 	engines := make([]*query.ExecutionEngine, 0)
 
 	// Retrieve low-level cursors for iterating.
-	cursors := s.db.Cursors(table.Name)
+	buckets := s.db.Buckets(table.Name)
+	defer func(buckets []*bolt.Bucket) {
+		for _, b := range buckets {
+			b.Tx().Rollback()
+		}
+	}(buckets)
 
 	// Create a channel to receive aggregate responses.
-	rchannel := make(chan interface{}, len(cursors))
+	rchannel := make(chan interface{}, len(buckets))
 
 	// Create an engine for merging results.
 	rootEngine, err := query.NewExecutionEngine(q)
@@ -427,7 +433,7 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 
 	// Initialize one execution engine for each servlet.
 	var data interface{}
-	for index, _ := range cursors {
+	for index, b := range buckets {
 		// Create an engine for each cursor. The execution engine is
 		// protected by a mutex so it's safe to destroy it at any time.
 		subengine, err := query.NewExecutionEngine(q)
@@ -436,12 +442,7 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 		}
 		defer subengine.Destroy()
 
-		// if err = subengine.SetLmdbCursor(c); err != nil {
-		// 	subengine.Destroy()
-		// 	cursors.Close()
-		// 	return nil, fmt.Errorf("execution engine cursor error: %s", err)
-		// }
-
+		subengine.SetBucket(b)
 		engines = append(engines, subengine)
 
 		// Run initialization once if required.
@@ -454,7 +455,7 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 
 	// Execute servlets asynchronously and retrieve responses outside
 	// of the server context.
-	for index, _ := range cursors {
+	for index, _ := range buckets {
 		e := engines[index]
 		go func() {
 			if result, err := e.Aggregate(data); err != nil {
@@ -469,7 +470,7 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 	var servletError error
 	var result interface{}
 	result = make(map[interface{}]interface{})
-	for _, _ = range cursors {
+	for _, _ = range buckets {
 		ret := <-rchannel
 		if err, ok := ret.(error); ok {
 			fmt.Printf("skyd.Server: Aggregate error: %v", err)

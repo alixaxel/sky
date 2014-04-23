@@ -4,12 +4,12 @@ import (
 	"bytes"
 	"fmt"
 	"os"
+	"path"
 	"sync"
 	"time"
-	"path"
 
-	"github.com/skydb/sky/core"
 	"github.com/boltdb/bolt"
+	"github.com/skydb/sky/core"
 	"github.com/ugorji/go/codec"
 )
 
@@ -17,7 +17,7 @@ import (
 type shard struct {
 	sync.Mutex
 	path string
-	db  *bolt.DB
+	db   *bolt.DB
 }
 
 // newShard creates a new shard.
@@ -63,25 +63,17 @@ func (s *shard) close() {
 	}
 }
 
-// Cursor retrieves a cursor for iterating over the shard.
-func (s *shard) Cursor(tablespace string) (*bolt.Cursor, error) {
+// Bucket retrieves a bucket for iterating over the shard.
+func (s *shard) Bucket(tablespace string) (*bolt.Bucket, error) {
 	s.Lock()
 	defer s.Unlock()
 
-	txn, table, err := s.table(tablespace, true)
+	_, table, err := s.table(tablespace, true)
 	if err != nil {
 		return nil, fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
 	}
-
-	c := table.Cursor()
-	if c == nil {
-		txn.Rollback()
-		return nil, fmt.Errorf("failed to create cursor (%s)", tablespace)
-	}
-
-	return c, err
+	return table, nil
 }
-
 
 // InsertEvent adds a single event to the shard.
 func (s *shard) InsertEvent(tablespace string, id string, event *core.Event) error {
@@ -112,11 +104,11 @@ func (s *shard) insertEvent(table *bolt.Bucket, id string, timestamp []byte, dat
 		}
 		data = old
 	}
-    // Encode timestamp.
-    var b bytes.Buffer
-    if _, err := b.Write(timestamp); err != nil {
-	    return err
-    }
+	// Encode timestamp.
+	var b bytes.Buffer
+	if _, err := b.Write(timestamp); err != nil {
+		return err
+	}
 
 	// Encode data.
 	var handle codec.MsgpackHandle
@@ -128,7 +120,7 @@ func (s *shard) insertEvent(table *bolt.Bucket, id string, timestamp []byte, dat
 	// Insert event.
 	object, err := table.CreateBucketIfNotExists([]byte(id))
 	if err != nil {
-		return fmt.Errorf("error creating object: %s (id=%s)", err, id)	
+		return fmt.Errorf("error creating object: %s (id=%s)", err, id)
 	}
 
 	if err := object.Put(timestamp, b.Bytes()); err != nil {
@@ -188,7 +180,7 @@ func (s *shard) getEvent(table *bolt.Bucket, id string, timestamp []byte) (map[i
 	if table.Writable() {
 		object, err = table.CreateBucketIfNotExists([]byte(id))
 		if err != nil {
-			return nil, fmt.Errorf("failed to create object: %s (%s)", err, id)		
+			return nil, fmt.Errorf("failed to create object: %s (%s)", err, id)
 		}
 	} else {
 		if object = table.Bucket([]byte(id)); object == nil {
@@ -198,13 +190,13 @@ func (s *shard) getEvent(table *bolt.Bucket, id string, timestamp []byte) (map[i
 
 	event := object.Get(timestamp)
 	if event == nil {
-		return nil, nil	
+		return nil, nil
 	}
 
 	if !bytes.Equal(timestamp, event[0:8]) {
-		return nil,nil 
+		return nil, nil
 	}
-	
+
 	// Decode data.
 	var data = make(map[int64]interface{})
 	var handle codec.MsgpackHandle
@@ -234,7 +226,7 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 
 	object := table.Bucket([]byte(id))
 	if object == nil {
-		return nil, nil		
+		return nil, nil
 	}
 
 	c := object.Cursor()
@@ -279,7 +271,7 @@ func (s *shard) DeleteEvent(tablespace string, id string, timestamp time.Time) e
 
 	object := table.Bucket([]byte(id))
 	if object == nil {
-		return fmt.Errorf("object not found: %s (%s)", id, tablespace)		
+		return fmt.Errorf("object not found: %s (%s)", id, tablespace)
 	}
 
 	if err = object.Delete(core.ShiftTimeBytes(timestamp)); err != nil {
@@ -330,7 +322,7 @@ func (s *shard) drop(tablespace string) error {
 		return fmt.Errorf("table delete error: %s (%s)", err, tablespace)
 	}
 	txn.Commit()
-	
+
 	return nil
 }
 
@@ -345,13 +337,13 @@ func (s *shard) table(tablespace string, readOnly bool) (*bolt.Tx, *bolt.Bucket,
 		if bucket == nil {
 			txn.Rollback()
 			return nil, nil, fmt.Errorf("Table does not exist: %s", tablespace)
-		}		
+		}
 	} else {
 		bucket, err = txn.CreateBucketIfNotExists([]byte(tablespace))
 		if err != nil {
 			txn.Rollback()
 			return nil, nil, fmt.Errorf("Failed to create table: %s (%s)", err, tablespace)
-		}		
+		}
 	}
 	return txn, bucket, nil
 }

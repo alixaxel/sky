@@ -38,18 +38,6 @@ func TestServerUpdateEvents(t *testing.T) {
 	})
 }
 
-// Ensure that we receive an error when inserting a large record.
-func TestServerInsertEventTooLarge(t *testing.T) {
-	runTestServer(func(s *Server) {
-		setupTestTable("foo")
-		setupTestProperty("foo", "bar", true, "string")
-
-		// Send one large event (600 character string).
-		resp, _ := sendTestHttpRequest("PUT", "http://localhost:8586/tables/foo/objects/xyz/events/2012-01-01T02:00:00Z", "application/json", `{"data":{"bar":"012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"}}`)
-		assertResponse(t, resp, 500, `{"message":"lmdb txn put error: MDB_BAD_VALSIZE: Too big key/data, key is empty, or wrong DUPFIXED size (xyz: len=613)"}`+"\n", "Too large event")
-	})
-}
-
 // Ensure that we can delete all events for an object.
 func TestServerDeleteEvent(t *testing.T) {
 	runTestServer(func(s *Server) {
@@ -108,16 +96,6 @@ func TestServerStreamUpdateEvents(t *testing.T) {
 		// Check our work.
 		resp, _ = sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/objects/xyz/events", "application/json", "")
 		assertResponse(t, resp, 200, `[{"data":{"bar":"myValue","baz":12},"timestamp":"2012-01-01T02:00:00Z"},{"data":{"bar":"myValue2"},"timestamp":"2012-01-01T03:00:00Z"}]`+"\n", "GET /tables/:name/objects/:objectId/events failed.")
-	})
-}
-
-// Ensure that streaming a large event returns an error.
-func TestServerStreamEventTooLarge(t *testing.T) {
-	runTestServer(func(s *Server) {
-		setupTestTable("foo")
-		setupTestProperty("foo", "bar", true, "string")
-		resp, _ := sendTestHttpRequest("PATCH", "http://localhost:8586/tables/foo/events", "application/json", `{"id":"xyz","timestamp":"2012-01-01T02:00:00Z","data":{"bar":"012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789012345678901234567890123456789"}}`)
-		assertResponse(t, resp, 500, `{"message":"Cannot put event: lmdb txn put error: MDB_BAD_VALSIZE: Too big key/data, key is empty, or wrong DUPFIXED size (xyz: len=613)", "events_written":0}`, "Stream event too large")
 	})
 }
 
