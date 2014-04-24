@@ -220,7 +220,7 @@ func (s *shard) GetEvents(tablespace string, id string) ([]*core.Event, error) {
 
 	txn, table, err := s.table(tablespace, true)
 	if err != nil {
-		return nil, fmt.Errorf("failed to open table: %s (%s)", err, tablespace)
+		return nil, nil
 	}
 	defer txn.Rollback()
 
