@@ -13,7 +13,7 @@ import (
 	"github.com/ugorji/go/codec"
 )
 
-// shard represents a subset of the database stored in a single LMDB environment.
+// shard represents a subset of the database stored in a single bolt database.
 type shard struct {
 	sync.Mutex
 	path string
@@ -30,7 +30,7 @@ func (s *shard) Stats() *bolt.Stats {
 	return &stats
 }
 
-// Open allocates a new LMDB environment.
+// Open creates or opens a bolt database on the configured path.
 func (s *shard) Open() error {
 	s.Lock()
 	defer s.Unlock()
