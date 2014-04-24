@@ -3,12 +3,12 @@ package db
 import (
 	"encoding/binary"
 	"fmt"
-	"github.com/skydb/sky/core"
 	"github.com/boltdb/bolt"
+	"github.com/skydb/sky/core"
 	"os"
-	"sync"
-	"strconv"
 	"path"
+	"strconv"
+	"sync"
 )
 
 // cacheSize is the number of factors that are stored in the LRU cache.
@@ -22,11 +22,11 @@ var factors = []byte("factors")
 type Factorizer struct {
 	sync.Mutex
 
-	db 		*bolt.DB
-	txn		*bolt.Tx
-	path   	string
-	caches 	map[string]*cache
-	dirty  	bool
+	db     *bolt.DB
+	txn    *bolt.Tx
+	path   string
+	caches map[string]*cache
+	dirty  bool
 }
 
 // NewFactorizer returns a new Factorizer instance.
@@ -42,7 +42,7 @@ func (f *Factorizer) Path() string {
 // Open bolt database at the given path.
 func (f *Factorizer) Open(dbPath string) error {
 	var err error
-	
+
 	f.Lock()
 	defer f.Unlock()
 
@@ -62,11 +62,11 @@ func (f *Factorizer) Open(dbPath string) error {
 	}
 
 	f.renew()
-	
+
 	if _, err := f.txn.CreateBucketIfNotExists(factors); err != nil {
 		return fmt.Errorf("factor bucket creation error: %s", err)
 	}
-	
+
 	// Initialize the cache.
 	f.caches = make(map[string]*cache)
 
@@ -196,7 +196,7 @@ func (f *Factorizer) factorize(id string, value string, createIfMissing bool) (u
 	}
 
 	bucket := f.txn.Bucket(factors)
-	
+
 	data := bucket.Get(f.key(value))
 	if data != nil {
 		sequence := binary.BigEndian.Uint64(data)
@@ -253,7 +253,7 @@ func (f *Factorizer) defactorize(id string, value uint64) (string, error) {
 	}
 
 	bucket := f.txn.Bucket(factors)
-	
+
 	data := bucket.Get(f.revkey(value))
 
 	if data == nil {
@@ -301,16 +301,16 @@ func (f *Factorizer) cache(id string) *cache {
 
 // The key for a given value.
 func (f *Factorizer) key(value string) []byte {
-	b := make([]byte,len(value)+1)
+	b := make([]byte, len(value)+1)
 	b[0] = '>'
-	copy(b[1:],value)
+	copy(b[1:], value)
 	return b
 }
 
 // The reverse key for a given value.
 func (f *Factorizer) revkey(value uint64) []byte {
-	b := make([]byte,17)
+	b := make([]byte, 17)
 	b[0] = '<'
-	b = strconv.AppendUint(b[:1],value,16)
-	return b 
+	b = strconv.AppendUint(b[:1], value, 16)
+	return b
 }

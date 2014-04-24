@@ -131,17 +131,11 @@ void bolt_cursor_init(bolt_cursor *c, void *data, size_t pgsz, pgid root) {
 
 // Positions the cursor to the first leaf element and returns the key/value pair.
 void bolt_cursor_first(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *flags) {
-    fprintf(stderr, "bolt_cursor_first.0\n");
-
     // reset stack to initial state
     elem_ref *ref = cursor_push(c, c->root);
 
-    fprintf(stderr, "bolt_cursor_first.1\n");
-
     // Find first leaf and return key/value.
     cursor_key_value(c, key, value, flags);
-
-    fprintf(stderr, "bolt_cursor_first.2\n");
 }
 
 // Positions the cursor to the next leaf element and returns the key/value pair.
@@ -221,29 +215,21 @@ leaf_element *page_leaf_element(page *p, uint16_t index) {
 
 // Returns the key/value pair for the current position of the cursor.
 void cursor_key_value(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *flags) {
-    fprintf(stderr, "cursor_key_value.0\n");
-
     elem_ref *ref = cursor_current(c);
-
-    fprintf(stderr, "cursor_key_value.1 %p %p\n", ref, ref->page);
 
     // If stack or current page is empty return null.
     if (ref == NULL || ref->page->count == 0) {
-    fprintf(stderr, "cursor_key_value.2\n");
         key->size = value->size = 0;
         key->data = value->data = NULL;
         *flags = 0;
         return;
     };
-    fprintf(stderr, "cursor_key_value.3\n");
 
     // Descend to the current leaf page if we're on branch page.
     while (ref->page->flags & PAGE_BRANCH) {
-    fprintf(stderr, "cursor_key_value.4\n");
         branch_element *elem = page_branch_element(ref->page,ref->index);
         ref = cursor_push(c, elem->pgid);
     };
-    fprintf(stderr, "cursor_key_value.5\n");
 
     leaf_element *elem = page_leaf_element(ref->page,ref->index);
 
@@ -263,9 +249,6 @@ void cursor_key_value(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *
 void cursor_search(bolt_cursor *c, bolt_val key, pgid id) {
     // Push page onto the cursor stack.
     elem_ref *ref = cursor_push(c, id);
-
-    // int len = key.size > 10 ? 10 : key.size;
-    // printf("\npage=%d, depth=%d, seek=...%.*s[%d]", (int)id, c->top, len, ((char*)(key.data)) + key.size - len, key.size);
 
     // If we're on a leaf page/node then find the specific node.
     if (ref->page->flags & PAGE_LEAF) {
@@ -288,8 +271,6 @@ void cursor_search_leaf(bolt_cursor *c, bolt_val key) {
         leaf_element *elem = &elems[i];
         int rc = memcmp(key.data, ((void*)elem) + elem->pos, (elem->ksize < key.size ? elem->ksize : key.size));
 
-        // int len = key.size > 10 ? 10 : key.size;
-        // printf("\n?L rc=%d; elem=...%.*s[%d]", rc, len, ((char*)elem) + elem->pos + elem->ksize - len, elem->ksize);
         if ((rc == 0 && key.size <= elem->ksize) || rc < 0) {
             ref->index = i;
             return;
@@ -311,8 +292,6 @@ void cursor_search_branch(bolt_cursor *c, bolt_val key) {
         branch_element *elem = &elems[i];
         int rc = memcmp(key.data, ((void*)elem) + elem->pos, (elem->ksize < key.size ? elem->ksize : key.size));
 
-        // int len = key.size > 10 ? 10 : key.size;
-        // printf("\n?B rc=%d; elem=...%.*s[%d]", rc, len, ((char*)elem) + elem->pos + elem->ksize - len, elem->ksize);
         if (rc == 0 && key.size == elem->ksize) {
             // Exact match, done.
             ref->index = i;
@@ -729,14 +708,11 @@ void sky_cursor_set_property(sky_cursor *cursor, int64_t property_id,
 // Sets up object after cursor has already been positioned.
 bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
 {
-    fprintf(stderr, "sky_cursor_iter_object.0\n");
 
     if(cursor->key_prefix != NULL && (key->size < cursor->key_prefix_sz || memcmp(cursor->key_prefix, key->data, cursor->key_prefix_sz) != 0)) {
         return false;
     }
     // fprintf(stderr, "\nOBJ (%.*s) [%d]\n", (int)key->mv_size, (char*)key->mv_data, (int)key->mv_size);
-
-    fprintf(stderr, "sky_cursor_iter_object.1\n");
 
     // Clear the data object if set.
     cursor->session_idle_in_sec = 0;
@@ -744,27 +720,18 @@ bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
     cursor->next_event->eof = false;
     memset(cursor->event, 0, cursor->event_sz);
 
-    fprintf(stderr, "sky_cursor_iter_object.2\n");
-
     // Extract the bucket from the object cursor and init event cursor.
     bucket *b = (bucket*)data->data;
-    cursor->event_cursor.root = b->root;
-    cursor->event_cursor.top = -1;
-
-    fprintf(stderr, "sky_cursor_iter_object.3\n");
+    bolt_cursor_init(&cursor->event_cursor, cursor->object_cursor.data, cursor->object_cursor.pgsz, b->root);
 
     // Read the first event into the cursor buffer.
     uint32_t flags;
     bolt_val event_key, event_data;
     bolt_cursor_first(&cursor->event_cursor, &event_key, &event_data, &flags);
 
-    fprintf(stderr, "sky_cursor_iter_object.4\n");
-
     if(!sky_cursor_read(cursor, cursor->next_event, event_data.data)) {
         return false;
     }
-
-    fprintf(stderr, "sky_cursor_iter_object.5\n");
 
     // Move "next" event to current event and put the next event in buffer.
     return sky_cursor_next_event(cursor);
@@ -774,8 +741,6 @@ bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
 // move to the first object that with the given prefix.
 bool sky_cursor_first_object(sky_cursor *cursor)
 {
-    fprintf(stderr, "sky_cursor_first_object.0\n");
-
     uint32_t flags;
     bolt_val key, data, seek;
 
@@ -801,8 +766,6 @@ bool sky_cursor_first_object(sky_cursor *cursor)
 // Moves the cursor to point to the next object.
 bool sky_cursor_next_object(sky_cursor *cursor)
 {
-    fprintf(stderr, "sky_cursor_next_object.0\n");
-
     // Move to next object.
     uint32_t flags;
     bolt_val key, data;
@@ -818,32 +781,23 @@ bool sky_cursor_next_object(sky_cursor *cursor)
 // Returns true if the cursor moved forward, otherwise false.
 bool sky_cursor_next_event(sky_cursor *cursor)
 {
-    fprintf(stderr, "sky_cursor_next_event.0\n");
-
     // Don't allow cursor to move if we're EOF or marked as EOS wait.
     if(cursor->event->eof || (cursor->event->eos && cursor->eos_wait)) {
-    fprintf(stderr, "sky_cursor_next_event.1\n");
         return false;
     }
     cursor->eos_wait = true;
 
-    fprintf(stderr, "sky_cursor_next_event.2\n");
     // Copy variable state from current event to next event.
     if(cursor->variable_event_sz > 0) {
-    fprintf(stderr, "sky_cursor_next_event.3\n");
         uint32_t variable_event_offset = sizeof(sky_event) + cursor->action_event_sz;
         memcpy(((void*)cursor->next_event) + variable_event_offset, ((void*)cursor->event) + variable_event_offset, cursor->variable_event_sz - cursor->action_event_sz);
     }
 
-    fprintf(stderr, "sky_cursor_next_event.4\n");
     // Copy the next event to the current event.
     memcpy(cursor->event, cursor->next_event, cursor->event_sz);
 
-    fprintf(stderr, "sky_cursor_next_event.5\n");
-
     // Read the next event.
     if(!cursor->next_event->eof) {
-    fprintf(stderr, "sky_cursor_next_event.6\n");
         uint32_t flags;
         bolt_val key, data;
         bolt_cursor_next(&cursor->event_cursor, &key, &data, &flags);
@@ -857,10 +811,7 @@ bool sky_cursor_next_event(sky_cursor *cursor)
                 return true;
             }
         }
-    fprintf(stderr, "sky_cursor_next_event.7\n");
     }
-
-    fprintf(stderr, "sky_cursor_next_event.8\n");
 
     // Update eos.
     sky_cursor_update_eos(cursor);

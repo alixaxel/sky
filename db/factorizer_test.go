@@ -3,9 +3,9 @@ package db
 import (
 	"io/ioutil"
 	"os"
+	"path/filepath"
 	"strconv"
 	"testing"
-	"path/filepath"
 )
 
 // Ensure that we can factorize and defactorize values.
@@ -54,7 +54,7 @@ func withFactorizer(fn func(f *Factorizer)) {
 	defer os.RemoveAll(path)
 
 	f := NewFactorizer()
-	if err := f.Open(filepath.Join(path,"factorizer-test")); err != nil {
+	if err := f.Open(filepath.Join(path, "factorizer-test")); err != nil {
 		panic(err.Error())
 	}
 	defer f.Close()

@@ -168,21 +168,24 @@ func TestDBReopen(t *testing.T) {
 		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
 		assert.Nil(t, err, "")
 		assert.NotNil(t, e, "")
-		if e == nil {return}
+		if e == nil {
+			return
+		}
 		assert.Equal(t, e.Timestamp, musttime("2000-01-01T00:00:00Z"), "")
 		assert.Equal(t, e.Data[1], "john", "")
 	})
 }
 
-func TestDBCursors(t *testing.T) {
+func TestDBuckets(t *testing.T) {
 	withDB(func(db *db) {
 		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
 		db.InsertEvent("foo", "baz", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		cursors := db.Cursors("foo")
-		defer cursors.Close()
-		assert.True(t, len(cursors) > 0)
+		buckets := db.Buckets("foo")
+		assert.True(t, len(buckets) > 0)
 		keys := make([]string, 0)
-		for _, c := range cursors {
+		for _, b := range buckets {
+			c := b.Cursor()
+			defer b.Tx().Rollback()
 			for key, _ := c.First(); key != nil; key, _ = c.Next() {
 				keys = append(keys, string(key))
 			}
