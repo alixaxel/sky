@@ -318,10 +318,9 @@ func (s *shard) drop(tablespace string) error {
 	defer txn.Rollback()
 
 	// Delete the key.
-	if err = txn.DeleteBucket([]byte(tablespace)); err != nil {
-		return fmt.Errorf("table delete error: %s (%s)", err, tablespace)
+	if err = txn.DeleteBucket([]byte(tablespace)); err == nil {
+		txn.Commit()
 	}
-	txn.Commit()
 
 	return nil
 }
