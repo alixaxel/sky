@@ -186,19 +186,6 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 	vars := mux.Vars(req)
 	t0 := time.Now()
 
-	// Check for flush period/timeout passed as URL params.
-	flushPeriod := s.StreamFlushPeriod
-	if rawFlushPeriod := req.FormValue("flush-period"); rawFlushPeriod != "" {
-		period, err := strconv.Atoi(rawFlushPeriod)
-		if err == nil {
-			flushPeriod = uint(period)
-		} else {
-			s.logger.Printf("ERR: invalid flush-period parameter: %v", err)
-			fmt.Fprintf(w, `{"message":"invalid flush-period parameter: %v"}`, err)
-			return
-		}
-	}
-
 	// Check for flush threshold/buffer passed as URL params.
 	flushThreshold := s.StreamFlushThreshold
 	if rawFlushThreshold := req.FormValue("flush-threshold"); rawFlushThreshold != "" {
@@ -206,7 +193,7 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		if err == nil {
 			flushThreshold = uint(threshold)
 		} else {
-			s.logger.Printf("ERR: invalid flush-period parameter: %v", err)
+			s.logger.Printf("ERR: invalid flush-threshold parameter: %v", err)
 			fmt.Fprintf(w, `{"message":"invalid flush-threshold parameter: %v"}`, err)
 			return
 		}
@@ -252,7 +239,6 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 
 	loop:
 		for {
-			flushTimer := time.NewTimer(time.Duration(flushPeriod) * time.Second)
 
 			// Read in a JSON object.
 			rawEvent := map[string]interface{}{}
@@ -267,22 +253,6 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 			case err := <-eventErrors:
 				return err
 
-			case <-flushTimer.C:
-				// Flush period/timeout exceeded, flush all events.
-				flushedCount := 0
-				s.logger.Printf("[STREAM] [FLUSH TIMEOUT] [FLUSHING] timeout=`%+v`", flushPeriod)
-				for table, events := range tableObjects {
-					count, err := s.flushTableEvents(table, events)
-					if err != nil {
-						return err
-					}
-					eventsWritten += count
-					flushedCount += count
-				}
-				tableObjects = make(map[*core.Table]objectEvents)
-				s.logger.Printf("[STREAM] [FLUSH TIMEOUT] [FLUSHED] events=`%d`", flushedCount)
-				flushEventCount = 0
-				continue loop
 			}
 
 			// Extract table name, if necessary.
