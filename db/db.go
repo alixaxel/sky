@@ -1,7 +1,6 @@
 package db
 
 import (
-	"fmt"
 	"io/ioutil"
 	"os"
 	"path/filepath"
@@ -10,6 +9,7 @@ import (
 	"sync"
 	"time"
 
+	"github.com/boltdb/bolt"
 	"github.com/skydb/sky/core"
 )
 
@@ -22,7 +22,7 @@ type DB interface {
 	Open() error
 	Close()
 	Factorizer(tablespace string) (*Factorizer, error)
-	Cursors(tablespace string) (Cursors, error)
+	Buckets(tablespace string) []*bolt.Bucket
 	GetEvent(tablespace string, id string, timestamp time.Time) (*core.Event, error)
 	GetEvents(tablespace string, id string) ([]*core.Event, error)
 	InsertEvent(tablespace string, id string, event *core.Event) error
@@ -32,15 +32,12 @@ type DB interface {
 	DeleteObject(tablespace string, id string) error
 	Merge(tablespace string, destinationId string, sourceId string) error
 	Drop(tablespace string) error
-	Stats() ([]*Stat, error)
+	Stats() []*bolt.Stats
 }
 
 // db is the default implementation of the DB interface.
 type db struct {
 	sync.RWMutex
-	NoSync     bool
-	MaxDBs     uint
-	MaxReaders uint
 
 	factorizers map[string]*Factorizer
 	path        string
@@ -48,13 +45,10 @@ type db struct {
 }
 
 // Creates a new DB instance with data storage at the given path.
-func New(path string, noSync bool, maxDBs uint, maxReaders uint) DB {
+func New(path string) DB {
 	return &db{
 		factorizers: make(map[string]*Factorizer),
 		path:        path,
-		NoSync:      noSync,
-		MaxDBs:      maxDBs,
-		MaxReaders:  maxReaders,
 	}
 }
 
@@ -93,7 +87,7 @@ func (db *db) Open() error {
 	db.shards = make([]*shard, 0)
 	for i := 0; i < shardCount; i++ {
 		db.shards = append(db.shards, newShard(db.shardPath(i)))
-		if err := db.shards[i].Open(db.MaxDBs, db.MaxReaders, options(db.NoSync)); err != nil {
+		if err := db.shards[i].Open(); err != nil {
 			db.close()
 			return err
 		}
@@ -139,7 +133,7 @@ func (db *db) shardCount() (int, error) {
 	count := 0
 	for _, info := range infos {
 		index, err := strconv.Atoi(info.Name())
-		if info.IsDir() && err == nil && (index+1) > count {
+		if err == nil && (index+1) > count {
 			count = index + 1
 		}
 	}
@@ -183,9 +177,6 @@ func (db *db) factorizer(tablespace string) (*Factorizer, error) {
 
 	// Otherwise create a new factorizer for the table.
 	f := NewFactorizer()
-	f.NoSync = db.NoSync
-	f.MaxDBs = db.MaxDBs
-	f.MaxReaders = db.MaxReaders
 
 	path := filepath.Join(db.factorsPath(), tablespace)
 	if err := f.Open(path); err != nil {
@@ -198,18 +189,16 @@ func (db *db) factorizer(tablespace string) (*Factorizer, error) {
 	return f, nil
 }
 
-// Cursors retrieves a set of cursors for iterating over the database.
-func (db *db) Cursors(tablespace string) (Cursors, error) {
-	cursors := make(Cursors, 0)
+// Buckets retrieves a set of buckets for iterating over a table.
+func (db *db) Buckets(tablespace string) []*bolt.Bucket {
+	buckets := make([]*bolt.Bucket, 0)
 	for _, s := range db.shards {
-		c, err := s.Cursor(tablespace)
-		if err != nil {
-			cursors.Close()
-			return nil, fmt.Errorf("db cursors error: %s", err)
+		b, err := s.Bucket(tablespace)
+		if err == nil {
+			buckets = append(buckets, b)
 		}
-		cursors = append(cursors, c)
 	}
-	return cursors, nil
+	return buckets
 }
 
 func (db *db) GetEvent(tablespace string, id string, timestamp time.Time) (*core.Event, error) {
@@ -291,14 +280,10 @@ func (db *db) Drop(tablespace string) error {
 	return err
 }
 
-func (db *db) Stats() ([]*Stat, error) {
-	stats := make([]*Stat, 0, len(db.shards))
+func (db *db) Stats() []*bolt.Stats {
+	stats := make([]*bolt.Stats, 0, len(db.shards))
 	for _, shard := range db.shards {
-		stat, err := shard.Stat()
-		if err != nil {
-			return stats, err
-		}
-		stats = append(stats, stat)
+		stats = append(stats, shard.Stats())
 	}
-	return stats, nil
+	return stats
 }

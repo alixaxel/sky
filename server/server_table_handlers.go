@@ -2,12 +2,10 @@ package server
 
 import (
 	"errors"
-	"net/http"
-	"sort"
-
 	"github.com/gorilla/mux"
 	"github.com/skydb/sky/core"
-	"github.com/szferi/gomdb"
+	"net/http"
+	"sort"
 )
 
 func (s *Server) addTableHandlers() {
@@ -79,20 +77,13 @@ func (s *Server) tableKeysHandler(w http.ResponseWriter, req *http.Request, para
 		return nil, err
 	}
 
-	cursors, err := s.db.Cursors(t.Name)
-	if err != nil {
-		return nil, err
-	}
-	defer cursors.Close()
+	buckets := s.db.Buckets(t.Name)
 
 	keys := []string{}
-	for _, c := range cursors {
-		for {
-			// Retrieve main key value.
-			bkey, _, err := c.Get(nil, mdb.NEXT_NODUP)
-			if err != nil {
-				break
-			}
+	for _, b := range buckets {
+		defer b.Tx().Rollback()
+		c := b.Cursor()
+		for bkey, _ := c.First(); bkey != nil; bkey, _ = c.Next() {
 			keys = append(keys, string(bkey))
 		}
 	}

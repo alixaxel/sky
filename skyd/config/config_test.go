@@ -9,9 +9,8 @@ const testConfigFileA = `
 port=9000
 data-path="/home/data"
 pid-path = "/home/pid"
-nosync = true
-max-dbs = 5
-max-readers = 250
+stream-flush-period = 30
+stream-flush-threshold = 500
 `
 
 // Decode a configuration file.
@@ -27,11 +26,9 @@ func TestDecode(t *testing.T) {
 		t.Fatalf("Invalid data path: %v", config.DataPath)
 	} else if config.PidPath != "/home/pid" {
 		t.Fatalf("Invalid pid path: %v", config.PidPath)
-	} else if config.NoSync != true {
-		t.Fatalf("Invalid nosync option: %v", config.NoSync)
-	} else if config.MaxDBs != 5 {
-		t.Fatalf("Invalid max DBs setting: %v", config.MaxDBs)
-	} else if config.MaxReaders != 250 {
-		t.Fatalf("Invalid max readers setting: %v", config.MaxReaders)
+	} else if config.StreamFlushPeriod != 30 {
+		t.Fatalf("Invalid no stream flush period option: %v", config.StreamFlushPeriod)
+	} else if config.StreamFlushThreshold != 500 {
+		t.Fatalf("Invalid no stream flush threshold option: %v", config.StreamFlushThreshold)
 	}
 }

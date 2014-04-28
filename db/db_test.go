@@ -9,16 +9,12 @@ import (
 
 	"github.com/skydb/sky/core"
 	"github.com/stretchr/testify/assert"
-	"github.com/szferi/gomdb"
 )
 
 func TestDB(t *testing.T) {
-	db := New("/tmp/sky", true, 1000, 100).(*db)
+	db := New("/tmp/sky").(*db)
 	assert.Equal(t, db.dataPath(), "/tmp/sky/data", "")
 	assert.Equal(t, db.shardPath(2), "/tmp/sky/data/2", "")
-	assert.Equal(t, int(db.MaxDBs), 1000, "")
-	assert.Equal(t, db.MaxReaders, uint(100), "")
-	assert.Equal(t, db.NoSync, true, "")
 }
 
 func TestDBInsertEvent(t *testing.T) {
@@ -171,27 +167,26 @@ func TestDBReopen(t *testing.T) {
 
 		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
 		assert.Nil(t, err, "")
+		assert.NotNil(t, e, "")
+		if e == nil {
+			return
+		}
 		assert.Equal(t, e.Timestamp, musttime("2000-01-01T00:00:00Z"), "")
 		assert.Equal(t, e.Data[1], "john", "")
 	})
 }
 
-func TestDBCursors(t *testing.T) {
+func TestDBuckets(t *testing.T) {
 	withDB(func(db *db) {
 		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
 		db.InsertEvent("foo", "baz", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		cursors, err := db.Cursors("foo")
-		defer cursors.Close()
-		assert.Nil(t, err, "")
-
+		buckets := db.Buckets("foo")
+		assert.True(t, len(buckets) > 0)
 		keys := make([]string, 0)
-		for _, c := range cursors {
-			for {
-				key, _, err := c.Get(nil, mdb.NEXT)
-				if err == mdb.NotFound {
-					break
-				}
-				assert.Nil(t, err, "")
+		for _, b := range buckets {
+			c := b.Cursor()
+			defer b.Tx().Rollback()
+			for key, _ := c.First(); key != nil; key, _ = c.Next() {
 				keys = append(keys, string(key))
 			}
 		}
@@ -204,7 +199,7 @@ func TestDBStats(t *testing.T) {
 	withDB(func(db *db) {
 		count, err := db.shardCount()
 		assert.Nil(t, err, "")
-		stats, err := db.Stats()
+		stats := db.Stats()
 		assert.Nil(t, err, "")
 		assert.Equal(t, len(stats), count)
 	})
@@ -215,7 +210,7 @@ func TestDBDrop(t *testing.T) {
 		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
 		db.Drop("foo")
 		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		assert.Nil(t, err, "")
+		assert.NotNil(t, err, "")
 		assert.Nil(t, e, "")
 	})
 }
@@ -224,7 +219,7 @@ func withDB(f func(db *db)) {
 	path, _ := ioutil.TempDir("", "")
 	defer os.RemoveAll(path)
 
-	db := New(path, false, 4096, 126).(*db)
+	db := New(path).(*db)
 	if err := db.Open(); err != nil {
 		panic(err.Error())
 	}

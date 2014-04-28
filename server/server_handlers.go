@@ -10,7 +10,7 @@ func (s *Server) addHandlers() {
 		return s.pingHandler(w, req, params)
 	}).Methods("GET")
 	s.ApiHandleFunc("/stats", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
-		return s.db.Stats()
+		return s.db.Stats(), nil
 	}).Methods("GET")
 	s.ApiHandleFunc("/", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.indexHandler(w, req, params)

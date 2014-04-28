@@ -3,12 +3,15 @@ package main
 import (
 	"flag"
 	"fmt"
-	"github.com/skydb/sky/server"
-	. "github.com/skydb/sky/skyd/config"
 	"io/ioutil"
 	"os"
 	"os/signal"
 	"runtime"
+	"syscall"
+
+	"github.com/davecheney/profile"
+	"github.com/skydb/sky/server"
+	. "github.com/skydb/sky/skyd/config"
 )
 
 //------------------------------------------------------------------------------
@@ -36,9 +39,6 @@ func init() {
 	flag.UintVar(&config.Port, "p", config.Port, "the port to listen on")
 	flag.StringVar(&config.DataPath, "data-path", config.DataPath, "the data directory")
 	flag.StringVar(&config.PidPath, "pid-path", config.PidPath, "the path to the pid file")
-	flag.BoolVar(&config.NoSync, "nosync", config.NoSync, "use mdb.NOSYNC option, or not")
-	flag.UintVar(&config.MaxDBs, "max-dbs", config.MaxDBs, "max number of named btrees in the database (mdb.MaxDBs)")
-	flag.UintVar(&config.MaxReaders, "max-readers", config.MaxReaders, "max number of concurrenly executing queries (mdb.MaxReaders)")
 	flag.StringVar(&configPath, "config", "", "the path to the config file")
 	flag.UintVar(&config.StreamFlushPeriod, "stream-flush-period", config.StreamFlushPeriod, "time period on which to flush streamed events")
 	flag.UintVar(&config.StreamFlushThreshold, "stream-flush-threshold", config.StreamFlushThreshold, "the maximum number of events (per table) in event stream before flush")
@@ -69,13 +69,11 @@ func main() {
 
 	// Initialize
 	s := server.NewServer(config.Port, config.DataPath)
-	s.NoSync = config.NoSync
-	s.MaxDBs = config.MaxDBs
-	s.MaxReaders = config.MaxReaders
 	s.StreamFlushPeriod = config.StreamFlushPeriod
 	s.StreamFlushThreshold = config.StreamFlushThreshold
 	writePidFile()
-	setupSignalHandlers(s)
+	// setupSignalHandlers(s)
+	go handleProfileSignal()
 
 	// Start the server up!
 	c := make(chan bool)
@@ -105,6 +103,30 @@ func setupSignalHandlers(s *server.Server) {
 			os.Exit(1)
 		}
 	}()
+}
+
+// Waits for the SIGUSR1 signal and toggles profiling on and off.
+func handleProfileSignal() {
+	var p interface {
+		Stop()
+	}
+
+	// Attach listener for SIGUSR1.
+	c := make(chan os.Signal, 1)
+	signal.Notify(c, syscall.SIGUSR1)
+
+	for {
+		// Wait for next signal.
+		<-c
+
+		// Toggle profiling on and off.
+		if p == nil {
+			p = profile.Start(&profile.Config{CPUProfile: true, MemProfile: true, BlockProfile: true})
+		} else {
+			p.Stop()
+			p = nil
+		}
+	}
 }
 
 //--------------------------------------
