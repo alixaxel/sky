@@ -34,9 +34,6 @@ func (s *Server) addEventHandlers() {
 
 	// Streaming import.
 	s.router.HandleFunc("/tables/{name}/events", s.streamUpdateEventsHandler).Methods("PATCH")
-
-	// Table agnostic streaming import.
-	s.router.HandleFunc("/events", s.streamUpdateEventsHandler).Methods("PATCH")
 }
 
 // GET /tables/:name/objects/:objectId/events
@@ -181,10 +178,25 @@ func (s *Server) flushTableEvents(table *core.Table, objects objectEvents) (int,
 	return count, nil
 }
 
-// PATCH /tables/:name/events and /events
+// PATCH /tables/:name/events
 func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	t0 := time.Now()
+
+	table, err := s.OpenTable(vars["name"])
+	if err != nil {
+		s.logger.Printf("ERR %v", err)
+		w.WriteHeader(http.StatusNotFound)
+		fmt.Fprintf(w, `{"message":"%v"}`, err)
+		return
+	}
+	factorizer, err := s.db.Factorizer(table.Name)
+	if err != nil {
+		s.logger.Printf("ERR %v", err)
+		w.WriteHeader(http.StatusInternalServerError)
+		fmt.Fprintf(w, `{"message":"%v"}`, err)
+		return
+	}
 
 	// Check for flush threshold/buffer passed as URL params.
 	flushThreshold := s.StreamFlushThreshold
@@ -199,24 +211,11 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		}
 	}
 
-	var table *core.Table
-	tableName := vars["name"]
-	if tableName != "" {
-		var err error
-		table, err = s.OpenTable(tableName)
-		if err != nil {
-			s.logger.Printf("ERR %v", err)
-			w.WriteHeader(http.StatusNotFound)
-			fmt.Fprintf(w, `{"message":"%v"}`, err)
-			return
-		}
-	}
-
-	tableObjects := make(map[*core.Table]objectEvents)
+	eventsByObject := make(objectEvents)
 	flushEventCount := uint(0)
 
 	eventsWritten := 0
-	err := func() error {
+	err = func() error {
 		// Stream in JSON event objects.
 		decoder := json.NewDecoder(req.Body)
 
@@ -255,24 +254,6 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 
 			}
 
-			// Extract table name, if necessary.
-			var eventTable *core.Table
-			if table == nil {
-				tableName, ok := rawEvent["table"].(string)
-				if !ok {
-					return fmt.Errorf("Table name required within event when using generic event stream.")
-				}
-				var err error
-				eventTable, err = s.OpenTable(tableName)
-				if err != nil {
-					s.logger.Printf("ERR %v", err)
-					return fmt.Errorf("Cannot open table %s: %+v", tableName, err)
-				}
-				delete(rawEvent, "table")
-			} else {
-				eventTable = table
-			}
-
 			// Extract the object identifier.
 			objectId, ok := rawEvent["id"].(string)
 			if !ok {
@@ -280,24 +261,16 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 			}
 
 			// Convert to a Sky event and insert.
-			event, err := eventTable.DeserializeEvent(rawEvent)
+			event, err := table.DeserializeEvent(rawEvent)
 			if err != nil {
 				return fmt.Errorf("Cannot deserialize: %v", err)
 			}
-			f, err := s.db.Factorizer(eventTable.Name)
-			if err != nil {
-				return fmt.Errorf("Cannot open factorizer: %v", err)
-			}
-			if err := f.FactorizeEvent(event, eventTable.PropertyFile(), true); err != nil {
+			if err := factorizer.FactorizeEvent(event, table.PropertyFile(), true); err != nil {
 				return fmt.Errorf("Cannot factorize: %v", err)
 			}
 
-			if _, ok := tableObjects[eventTable]; !ok {
-				tableObjects[eventTable] = make(objectEvents)
-			}
-
 			// Add event to table buffer.
-			tableObjects[eventTable][objectId] = append(tableObjects[eventTable][objectId], event)
+			eventsByObject[objectId] = append(eventsByObject[objectId], event)
 			flushEventCount++
 
 			// Flush events if exceeding threshold.
@@ -305,17 +278,15 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 
 				flushedCount := 0
 				s.logger.Printf("[STREAM] [FLUSH THRESHOLD] [FLUSHING] threshold=`%d` events=`%d`", flushThreshold, flushEventCount)
-				for table, events := range tableObjects {
-					count, err := s.flushTableEvents(table, events)
-					if err != nil {
-						return err
-					}
-					eventsWritten += count
-					flushedCount += count
+				count, err := s.flushTableEvents(table, eventsByObject)
+				if err != nil {
+					return err
 				}
+				eventsWritten += count
+				flushedCount += count
 				s.logger.Printf("[STREAM] [FLUSH THRESHOLD] [FLUSHED] events=`%d`", flushedCount)
 
-				tableObjects = make(map[*core.Table]objectEvents)
+				eventsByObject = make(objectEvents)
 				flushEventCount = 0
 			}
 
@@ -329,14 +300,12 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		err = func() error {
 			flushedCount := 0
 			s.logger.Printf("[STREAM] [END FLUSH] [FLUSHING] events=`%d`")
-			for table, objects := range tableObjects {
-				count, err := s.flushTableEvents(table, objects)
-				if err != nil {
-					return err
-				}
-				eventsWritten += count
-				flushedCount += count
+			count, err := s.flushTableEvents(table, eventsByObject)
+			if err != nil {
+				return err
 			}
+			eventsWritten += count
+			flushedCount += count
 			s.logger.Printf("[STREAM] [END FLUSH] [FLUSHED] events=`%d`", flushedCount)
 			return nil
 		}()
