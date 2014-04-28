@@ -51,9 +51,6 @@ $ sudo skyd
 
 If you visit `http://localhost:8585` (the default host:port) you should be greeted by a welcome message along with the current version of sky you are running.
 
-> NOTE: Sky cannot be built using Go 1.1.2 on Mac OS X because of [a known bug](https://github.com/szferi/gomdb/issues/10).
-> Please use Go 1.1.1 or Go 1.2.
-
 
 ## API
 

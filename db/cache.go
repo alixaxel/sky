@@ -7,12 +7,12 @@ type cache struct {
 	maxEntries int
 	ll         *list.List
 	keymap     map[string]*list.Element
-	valuemap   map[uint64]*list.Element
+	valuemap   map[int]*list.Element
 }
 
 type entry struct {
 	key   string
-	value uint64
+	value int
 }
 
 // newCache creates a new LRU Cache.
@@ -21,12 +21,12 @@ func newCache(maxEntries int) *cache {
 		maxEntries: maxEntries,
 		ll:         list.New(),
 		keymap:     make(map[string]*list.Element),
-		valuemap:   make(map[uint64]*list.Element),
+		valuemap:   make(map[int]*list.Element),
 	}
 }
 
 // add adds a value for a given key to the cache.
-func (c *cache) add(key string, value uint64) {
+func (c *cache) add(key string, value int) {
 	if e, ok := c.keymap[key]; ok {
 		c.ll.MoveToFront(e)
 		e.Value.(*entry).value = value
@@ -49,7 +49,7 @@ func (c *cache) add(key string, value uint64) {
 }
 
 // getByKey retrieves a value by key from the cache.
-func (c *cache) getValue(key string) (uint64, bool) {
+func (c *cache) getValue(key string) (int, bool) {
 	if e, ok := c.keymap[key]; ok {
 		c.ll.MoveToFront(e)
 		return e.Value.(*entry).value, true
@@ -58,7 +58,7 @@ func (c *cache) getValue(key string) (uint64, bool) {
 }
 
 // getByValue retrieves a key by value from the cache.
-func (c *cache) getKey(value uint64) (string, bool) {
+func (c *cache) getKey(value int) (string, bool) {
 	if e, ok := c.valuemap[value]; ok {
 		c.ll.MoveToFront(e)
 		return e.Value.(*entry).key, true
@@ -73,9 +73,4 @@ func (c *cache) remove(key string) {
 		delete(c.keymap, e.Value.(*entry).key)
 		delete(c.valuemap, e.Value.(*entry).value)
 	}
-}
-
-// size returns the number of items in the cache.
-func (c *cache) size() int {
-	return c.ll.Len()
 }

@@ -10,3 +10,4 @@ cover: fmt
 
 fmt:
 	go fmt
+
