@@ -162,92 +162,116 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		}
 	}
 
-	eventsByObject := make(objectEvents)
-	flushEventCount := uint(0)
-
-	eventsWritten := 0
-	err = func() error {
-		// Stream in JSON event objects.
-		decoder := json.NewDecoder(req.Body)
-
-		// Set up events decoder listener
-		events := make(chan *eventMessage)
-		eventErrors := make(chan error)
-		go func(decoder *json.Decoder) {
-			for {
-				event := &eventMessage{}
-				if err := decoder.Decode(&event); err == io.EOF {
-					close(events)
-					break
-				} else if err != nil {
-					eventErrors <- fmt.Errorf("Malformed json event: %v", err)
-					break
-				}
-				events <- event
-			}
-		}(decoder)
-
+	// GOROUTINE for event decoding
+	decodeEvents := make(chan *eventMessage, 2*flushThreshold) // decoded events
+	decodeErrors := make(chan error)                           // decoding errors
+	decodeStop := make(chan struct{})                          // signal the decoder to stop (by closing the channel)
+	go func(source io.Reader, events chan<- *eventMessage, errors chan<- error, stop <-chan struct{}) {
+		decoder := json.NewDecoder(source)
 	loop:
 		for {
-
-			// Read in a JSON object.
-			var msg *eventMessage
 			select {
-			case e, ok := <-events:
-				if !ok {
+			case <-stop:
+				break loop
+			default:
+				event := &eventMessage{}
+				err := decoder.Decode(&event)
+				switch {
+				case err == io.EOF:
+					close(events)
 					break loop
-				} else {
-					msg = e
+				case err != nil:
+					errors <- fmt.Errorf("Malformed json event: %v", err)
+					break loop
+				default:
+					events <- event
 				}
+			}
+		}
+	}(req.Body, decodeEvents, decodeErrors, decodeStop)
 
-			case err := <-eventErrors:
-				return err
+	// total events successfully written
+	// note that the count is updated by the flushing goroutine only!
+	// any read access must wait until that goroutine finishes
+	eventsWritten := 0
+
+	// GOROUTINE for event flushing
+	writeEvents := make(chan objectEvents, 1000)
+	writeErrors := make(chan error)
+	go func(events <-chan objectEvents, errors chan<- error) {
+		for batch := range events {
+			if err := s.flushTableEvents(table, batch); err != nil {
+				errors <- err
+				return
+			}
+			count := batch.Count()
+			eventsWritten += count
+			s.logger.Printf("[STREAM] [FLUSHED] events=`%d`", count)
+
+		}
+		// signal finishing successfully
+		close(errors)
+	}(writeEvents, writeErrors)
+
+	eventsByObject := make(objectEvents)
+
+	// Main loop receives decoded events,
+	// deserializes, factorizes and batches them for writing
+	err = func() error {
+		var err error
+		var flushEventCount uint
+	loop:
+		for {
+			var event *eventMessage
+			select {
+			case e, ok := <-decodeEvents:
+				if ok {
+					event = e
+				} else {
+					break loop
+				}
+			case err = <-decodeErrors:
+				break loop
+			case err = <-writeErrors:
+				// make sure we stop the decoder
+				close(decodeStop)
+				return err // skip flushing remaining events
 			}
 
 			// Extract the object identifier.
-			var objectId = msg.ID
+			var objectId = event.ID
 			if objectId == "" {
-				return fmt.Errorf("Object identifier required")
+				err = fmt.Errorf("Object identifier required")
+				break loop
 			}
 
-			// Add event to table buffer.
-			eventsByObject[objectId] = append(eventsByObject[objectId], &db.Event{Timestamp: msg.Timestamp, Data: msg.Data})
+			// Add event to the batch.
+			eventsByObject[objectId] = append(eventsByObject[objectId], &db.Event{Timestamp: event.Timestamp, Data: event.Data})
 			flushEventCount++
 
 			// Flush events if exceeding threshold.
 			if flushEventCount >= flushThreshold {
-				flushedCount := 0
-				s.logger.Printf("[STREAM] [FLUSH THRESHOLD] [FLUSHING] threshold=`%d` events=`%d`", flushThreshold, flushEventCount)
-				if err := s.flushTableEvents(table, eventsByObject); err != nil {
-					return err
-				}
-				eventsWritten += eventsByObject.Count()
-				flushedCount += eventsByObject.Count()
-				s.logger.Printf("[STREAM] [FLUSH THRESHOLD] [FLUSHED] events=`%d`", flushedCount)
-
+				writeEvents <- eventsByObject
 				eventsByObject = make(objectEvents)
 				flushEventCount = 0
 			}
-
 		}
-
-		return nil
+		// make sure we stop the decoder
+		close(decodeStop)
+		// Flush remaining events
+		if len(eventsByObject) > 0 {
+			writeEvents <- eventsByObject
+		}
+		close(writeEvents)
+		// Wait for flushing to finish.
+		// If the flush fails, report that error instead of any other,
+		// because flush failures involve an event that was successfully decoded,
+		// thus logically preceeding any decode/deserialize error
+		if err2 := <-writeErrors; err != nil {
+			err = err2
+		}
+		return err
 	}()
-
-	// Flush all events before closing the stream.
-	if err == nil {
-		err = func() error {
-			flushedCount := 0
-			s.logger.Printf("[STREAM] [END FLUSH] [FLUSHING] events=`%d`")
-			if err := s.flushTableEvents(table, eventsByObject); err != nil {
-				return err
-			}
-			eventsWritten += eventsByObject.Count()
-			flushedCount += eventsByObject.Count()
-			s.logger.Printf("[STREAM] [END FLUSH] [FLUSHED] events=`%d`", flushedCount)
-			return nil
-		}()
-	}
 
 	if err != nil {
 		s.logger.Printf("ERR %v", err)
