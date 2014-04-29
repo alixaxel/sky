@@ -3,7 +3,6 @@ package db_test
 import (
 	"errors"
 	"strconv"
-	"strings"
 	"testing"
 	"time"
 
@@ -438,29 +437,6 @@ func TestTableInsertEvent(t *testing.T) {
 	})
 }
 
-// Ensure that a table can insert two overlapping events and they will be merged.
-func TestTableInsertEventMerge(t *testing.T) {
-	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
-		table.Update(func(tx *Tx) error {
-			tx.CreateProperty("prop1", Integer, false)
-			tx.CreateProperty("prop2", Factor, false)
-			tx.CreateProperty("prop3", String, false)
-			tx.InsertEvent("user1", newEvent("2000-01-01T00:00:00Z", "prop1", 20, "prop2", "foo", "prop3", "frank"))
-			tx.InsertEvent("user1", newEvent("2000-01-01T00:00:00Z", "prop1", 30, "prop2", "bar"))
-
-			// Verify the events are merged.
-			e, err := tx.Event("user1", mustParseTime("2000-01-01T00:00:00Z"))
-			if assert.NoError(t, err) && assert.NotNil(t, e) {
-				assert.Equal(t, e.Data["prop1"], int64(30))
-				assert.Equal(t, e.Data["prop2"], "bar")
-				assert.Equal(t, e.Data["prop3"], "frank")
-			}
-			return nil
-		})
-	})
-}
-
 // Ensure that inserting an event into a closed table returns an error.
 func TestTableInsertEventNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
@@ -560,7 +536,7 @@ func TestTableDeleteEvent(t *testing.T) {
 			})
 
 			// Delete an event from the first user.
-			tx.DeleteEvent("user1", mustParseTime("2000-01-01T00:00:00Z"))
+			assert.NoError(t, tx.DeleteEvent("user1", mustParseTime("2000-01-01T00:00:00Z")))
 
 			// Verify event is gone.
 			e, _ := tx.Event("user1", mustParseTime("2000-01-01T00:00:00Z"))
@@ -698,45 +674,11 @@ func TestTableFactorizeBeyondCache(t *testing.T) {
 			for i := 0; i < FactorCacheSize*3; i++ {
 				e, err := tx.Event("user1", startTime.Add(time.Duration(i)*time.Second))
 				if assert.NoError(t, err) {
-					assert.Equal(t, e.Data["prop1"], strconv.Itoa(i))
-					assert.Equal(t, e.Data["prop2"], strconv.Itoa(i%(FactorCacheSize*1.5)))
-					assert.Equal(t, e.Data["prop3"], "foo")
+					assert.Equal(t, strconv.Itoa(i), e.Data["prop1"])
+					assert.Equal(t, strconv.Itoa(i%(FactorCacheSize*1.5)), e.Data["prop2"])
+					assert.Equal(t, "foo", e.Data["prop3"])
 				}
 			}
-			return nil
-		})
-	})
-}
-
-// Ensure that a table will truncate factors to account for LMDB limitations.
-func TestTableFactorTruncate(t *testing.T) {
-	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
-		table.Update(func(tx *Tx) error {
-			tx.CreateProperty("prop1", Factor, false)
-			tx.InsertEvent("user1", newEvent("2000-01-01T00:00:00Z", "prop1", strings.Repeat("*", 600)))
-
-			// Verify the truncation.
-			e, err := tx.Event("user1", mustParseTime("2000-01-01T00:00:00Z"))
-			assert.NoError(t, err)
-			assert.Equal(t, e.Data["prop1"], strings.Repeat("*", 500))
-			return nil
-		})
-	})
-}
-
-// Ensure that a table will truncate id to account for LMDB limitations.
-func TestTableIdTruncate(t *testing.T) {
-	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
-		table.Update(func(tx *Tx) error {
-			tx.CreateProperty("prop1", Factor, false)
-			tx.InsertEvent(strings.Repeat("A", 600), newEvent("2000-01-01T00:00:00Z", "prop1", "value1"))
-
-			// Verify the truncation.
-			e, err := tx.Event(strings.Repeat("A", 500), mustParseTime("2000-01-01T00:00:00Z"))
-			assert.NoError(t, err)
-			assert.Equal(t, e.Data["prop1"], "value1")
 			return nil
 		})
 	})

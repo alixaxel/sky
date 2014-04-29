@@ -148,6 +148,10 @@ func (db *DB) OpenTable(name string) (*Table, error) {
 	}
 
 	t := db.table(name)
+	if !t.Exists() {
+		return nil, fmt.Errorf("table not found: %s", name)
+	}
+
 	if err := t.Open(); err != nil {
 		return nil, err
 	}

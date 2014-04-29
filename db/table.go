@@ -188,7 +188,6 @@ func (t *Table) close() {
 func (t *Table) _close() {
 	if t.db != nil {
 		t.db.Close()
-		t.db = nil
 	}
 }
 
@@ -632,7 +631,7 @@ func (tx *Tx) DeleteEvent(id string, timestamp time.Time) error {
 
 	// Find object bucket.
 	b := tx.Bucket(shardDBName(tx.Table.shardIndex(id))).Bucket([]byte(id))
-	if b != nil {
+	if b == nil {
 		return nil
 	}
 
@@ -731,22 +730,13 @@ func (tx *Tx) addFactor(propertyID int, value string) (int, error) {
 
 	// Look up next sequence index.
 	var b = tx.Bucket(factorDBName(propertyID))
-	data := b.Get([]byte("+"))
-	if data == nil {
-		data = make([]byte, 8)
-	}
-
-	// Read identifier and increment.
-	index = int(binary.BigEndian.Uint64(data))
-	index += 1
-
-	// Save incremented index.
-	binary.BigEndian.PutUint64(data, uint64(index))
-	if err := b.Put([]byte("+"), data); err != nil {
-		return 0, fmt.Errorf("add factor txn get error: %s", err)
+	index, err := b.NextSequence()
+	if err != nil {
+		return 0, err
 	}
 
 	// Store the value-to-index lookup.
+	var data = make([]byte, 8)
 	binary.BigEndian.PutUint64(data[:], uint64(index))
 	if err := b.Put(factorKey(value), data); err != nil {
 		return 0, fmt.Errorf("add factor txn put error: %s", err)
