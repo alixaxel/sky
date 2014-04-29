@@ -289,6 +289,15 @@ func (tx *Tx) PutMeta() error {
 	return tx.Bucket([]byte("meta")).Put([]byte("meta"), value)
 }
 
+// Shards returns a slice of shard buckets.
+func (tx *Tx) Shards() []*bolt.Bucket {
+	var buckets = make([]*bolt.Bucket, 0)
+	for i := 0; i < tx.Table.shardCount; i++ {
+		buckets = append(buckets, tx.Bucket(shardDBName(i)))
+	}
+	return buckets
+}
+
 // Properties retrieves a map of properties by property name.
 func (tx *Tx) Properties() (map[string]*Property, error) {
 	tx.Table.Lock()
@@ -909,8 +918,8 @@ type tableRawMessage struct {
 
 // Event represents the state for an object at a given point in time.
 type Event struct {
-	Timestamp time.Time              `json:"timestamp"`
 	Data      map[string]interface{} `json:"data"`
+	Timestamp time.Time              `json:"timestamp"`
 }
 
 // rawEvent represents an internal event structure.
@@ -981,23 +990,6 @@ func bench() stat {
 
 // Stat represents statistics for a single table.
 type Stat struct {
-	Entries      uint64 `json:"entries"` // Number of data items
-	Size         uint64 `json:"size"`    // Size of the data memory map
-	Depth        uint   `json:"depth"`   // Depth (height) of the B-tree
-	Transactions struct {
-		Last uint64 `json:"last"` // ID of the last committed transaction
-	} `json:"transactions"`
-	Readers struct {
-		Max     uint `json:"max"`     // maximum number of threads for the environment
-		Current uint `json:"current"` // maximum number of threads used in the environment
-	} `json:"readers"`
-	Pages struct {
-		Last     uint64 `json:"last"`     // ID of the last used page
-		Size     uint   `json:"size"`     // Size of a database page. This is currently the same for all databases.
-		Branch   uint64 `json:"branch"`   // Number of internal (non-leaf) pages
-		Leaf     uint64 `json:"leaf"`     // Number of leaf pages
-		Overflow uint64 `json:"overflow"` // Number of overflow pages
-	} `json:"pages"`
 	Event struct {
 		Fetch struct {
 			Count    int           `json:"count"`
@@ -1055,17 +1047,6 @@ type Stat struct {
 // Diff calculates the difference between a stat object and another.
 func (s *Stat) Diff(other *Stat) *Stat {
 	diff := &Stat{}
-	diff.Entries = s.Entries - other.Entries
-	diff.Size = s.Size - other.Size
-	diff.Depth = s.Depth - other.Depth
-	diff.Transactions.Last = s.Transactions.Last - other.Transactions.Last
-	diff.Readers.Max = s.Readers.Max - other.Readers.Max
-	diff.Readers.Current = s.Readers.Current - other.Readers.Current
-	diff.Pages.Last = s.Pages.Last - other.Pages.Last
-	diff.Pages.Size = s.Pages.Size - other.Pages.Size
-	diff.Pages.Branch = s.Pages.Branch - other.Pages.Branch
-	diff.Pages.Leaf = s.Pages.Leaf - other.Pages.Leaf
-	diff.Pages.Overflow = s.Pages.Overflow - other.Pages.Overflow
 	diff.Event.Fetch.Count = s.Event.Fetch.Count - other.Event.Fetch.Count
 	diff.Event.Fetch.Duration = s.Event.Fetch.Duration - other.Event.Fetch.Duration
 	diff.Event.Insert.Count = s.Event.Insert.Count - other.Event.Insert.Count

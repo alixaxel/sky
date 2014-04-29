@@ -10,8 +10,8 @@ type Property struct {
 	table     *Table
 	ID        int    `json:"id"`
 	Name      string `json:"name"`
-	DataType  string `json:"dataType"`
 	Transient bool   `json:"transient"`
+	DataType  string `json:"dataType"`
 }
 
 // Validate checks that the property is valid. Properties can be invalid if

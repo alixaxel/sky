@@ -30,18 +30,18 @@ func (s *Server) statsHandler(w http.ResponseWriter, req *http.Request, params m
 		return nil, err
 	}
 
-	f, err := s.db.Factorizer(table.Name)
-	if err != nil {
-		return nil, err
-	}
+	var results interface{}
+	err = table.View(func(tx *db.Tx) error {
+		// Run a simple count query.
+		q, _ := query.NewParser().ParseString("SELECT count() AS count")
+		q.Prefix = req.FormValue("prefix")
+		q.Tx = tx
 
-	// Run a simple count query.
-	q, _ := query.NewParser().ParseString("SELECT count() AS count")
-	q.Prefix = req.FormValue("prefix")
-	q.SetTable(table)
-	q.SetFactorizer(f)
-
-	return s.RunQuery(table, q)
+		var err error
+		results, err = s.RunQuery(tx, q)
+		return err
+	})
+	return results, err
 }
 
 // POST /tables/:name/query
@@ -54,17 +54,22 @@ func (s *Server) queryHandler(w http.ResponseWriter, req *http.Request, params m
 		return nil, err
 	}
 
-	q, err := s.parseQuery(table, params)
-	if err != nil {
-		return nil, err
-	}
+	var results interface{}
+	err = table.View(func(tx *db.Tx) error {
+		q, err := s.parseQuery(tx, params)
+		if err != nil {
+			return err
+		}
 
-	prefix := req.FormValue("prefix")
-	if prefix != "" {
-		q.Prefix = prefix
-	}
+		prefix := req.FormValue("prefix")
+		if prefix != "" {
+			q.Prefix = prefix
+		}
 
-	return s.RunQuery(table, q)
+		results, err = s.RunQuery(tx, q)
+		return err
+	})
+	return results, err
 }
 
 // POST /tables/:name/query/codegen
@@ -77,24 +82,29 @@ func (s *Server) queryCodegenHandler(w http.ResponseWriter, req *http.Request, p
 		return nil, err
 	}
 
-	q, err := s.parseQuery(table, params)
-	if err != nil {
-		return nil, err
-	}
+	var source interface{}
+	err = table.View(func(tx *db.Tx) error {
+		q, err := s.parseQuery(tx, params)
+		if err != nil {
+			return err
+		}
 
-	// Create an engine to retrieve full header.
-	engine, err := query.NewExecutionEngine(q)
-	if err != nil {
-		return nil, err
-	}
-	source := engine.FullSource()
-	engine.Destroy()
+		// Create an engine to retrieve full header.
+		engine, err := query.NewExecutionEngine(q)
+		if err != nil {
+			return err
+		}
+		source = engine.FullSource()
+		engine.Destroy()
+
+		return nil
+	})
 
 	// Generate the query source code.
 	return source, &TextPlainContentTypeError{}
 }
 
-func (s *Server) parseQuery(table *db.Table, params map[string]interface{}) (*query.Query, error) {
+func (s *Server) parseQuery(tx *db.Tx, params map[string]interface{}) (*query.Query, error) {
 	var err error
 
 	// Use raw post data as query if it's not JSON.
@@ -106,11 +116,6 @@ func (s *Server) parseQuery(table *db.Table, params map[string]interface{}) (*qu
 	}
 	if raw == nil {
 		raw = params
-	}
-
-	f, err := s.db.Factorizer(table.Name)
-	if err != nil {
-		return nil, err
 	}
 
 	// Parse query if passed as a string. Otherwise deserialize JSON.
@@ -129,8 +134,7 @@ func (s *Server) parseQuery(table *db.Table, params map[string]interface{}) (*qu
 		}
 	}
 
-	q.SetTable(table)
-	q.SetFactorizer(f)
+	q.Tx = tx
 
 	return q, nil
 }

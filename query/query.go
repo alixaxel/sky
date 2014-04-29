@@ -29,6 +29,7 @@ func NewQuery() *Query {
 	q := &Query{statements: make(Statements, 0)}
 	q.addSystemVariable(NewVariable("@eos", db.Boolean))
 	q.addSystemVariable(NewVariable("@eof", db.Boolean))
+	q.addSystemVariable(NewVariable("timestamp", db.Integer))
 	return q
 }
 

@@ -88,6 +88,7 @@ func (db *DB) close() {
 func (db *DB) CreateTable(name string, shardCount int) (*Table, error) {
 	db.Lock()
 	defer db.Unlock()
+
 	if db.path == "" {
 		return nil, ErrDatabaseNotOpen
 	} else if name == "" {
