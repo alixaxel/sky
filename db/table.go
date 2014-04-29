@@ -27,6 +27,14 @@ var (
 	ErrObjectIDRequired = errors.New("object id required")
 )
 
+// NewTable returns a reference to a new table.
+func NewTable(name, path string) *Table {
+	return &Table{
+		name: name,
+		path: path,
+	}
+}
+
 // Table represents a collection of objects.
 type Table struct {
 	sync.Mutex
@@ -166,7 +174,7 @@ func (t *Table) drop() error {
 	defer t.Unlock()
 
 	// Close table and delete everything.
-	t._close()
+	t.close()
 	if err := os.RemoveAll(t.path); err != nil {
 		return fmt.Errorf("remove all error: %s", err)
 	}
@@ -179,13 +187,13 @@ func (t *Table) opened() bool {
 	return t.db != nil
 }
 
-func (t *Table) close() {
+func (t *Table) Close() {
 	t.Lock()
 	defer t.Unlock()
-	t._close()
+	t.close()
 }
 
-func (t *Table) _close() {
+func (t *Table) close() {
 	if t.db != nil {
 		t.db.Close()
 	}
@@ -203,6 +211,16 @@ func (t *Table) Update(fn func(*Tx) error) error {
 	return t.db.Update(func(tx *bolt.Tx) error {
 		return fn(&Tx{tx, t})
 	})
+}
+
+// MaxTransientID returns the largest transient property identifier.
+func (t *Table) MaxTransientID() int {
+	return t.maxTransientID
+}
+
+// MaxPermanentID returns the largest transient property identifier.
+func (t *Table) MaxPermanentID() int {
+	return t.maxPermanentID
 }
 
 // marshal encodes the table into a byte slice.

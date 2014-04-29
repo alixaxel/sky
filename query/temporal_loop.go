@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/skydb/sky/core"
+
+	"github.com/skydb/sky/db"
 )
 
 // A loop statement that iterates over time.
@@ -235,7 +236,7 @@ func (l *TemporalLoop) VarRefs() []*VarRef {
 func (l *TemporalLoop) Variables() []*Variable {
 	variables := []*Variable{}
 	if l.ref != nil {
-		variables = append(variables, NewVariable(l.ref.value, core.IntegerDataType))
+		variables = append(variables, NewVariable(l.ref.value, db.Integer))
 	}
 	variables = append(variables, l.statements.Variables()...)
 	return variables

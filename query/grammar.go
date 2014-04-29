@@ -5,7 +5,7 @@ import __yyfmt__ "fmt"
 
 //line grammar.y:3
 import (
-	"github.com/skydb/sky/core"
+	"github.com/skydb/sky/db"
 )
 
 //line grammar.y:11
@@ -378,7 +378,7 @@ out:
 		c = yyTok2[1] /* unknown char */
 	}
 	if yyDebug >= 3 {
-		__yyfmt__.Printf("lex %U %s\n", uint(char), yyTokname(c))
+		__yyfmt__.Printf("lex %s(%d)\n", yyTokname(c), uint(char))
 	}
 	return c
 }
@@ -475,7 +475,7 @@ yydefault:
 			Nerrs++
 			if yyDebug >= 1 {
 				__yyfmt__.Printf("%s", yyStatname(yystate))
-				__yyfmt__.Printf("saw %s\n", yyTokname(yychar))
+				__yyfmt__.Printf(" saw %s\n", yyTokname(yychar))
 			}
 			fallthrough
 
@@ -651,27 +651,27 @@ yydefault:
 	case 21:
 		//line grammar.y:182
 		{
-			yyVAL.str = core.FactorDataType
+			yyVAL.str = db.Factor
 		}
 	case 22:
 		//line grammar.y:183
 		{
-			yyVAL.str = core.StringDataType
+			yyVAL.str = db.String
 		}
 	case 23:
 		//line grammar.y:184
 		{
-			yyVAL.str = core.IntegerDataType
+			yyVAL.str = db.Integer
 		}
 	case 24:
 		//line grammar.y:185
 		{
-			yyVAL.str = core.FloatDataType
+			yyVAL.str = db.Float
 		}
 	case 25:
 		//line grammar.y:186
 		{
-			yyVAL.str = core.BooleanDataType
+			yyVAL.str = db.Boolean
 		}
 	case 26:
 		//line grammar.y:191

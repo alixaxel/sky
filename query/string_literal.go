@@ -1,9 +1,9 @@
 package query
 
 import (
-	"github.com/skydb/sky/core"
-	"github.com/skydb/sky/db"
 	"strconv"
+
+	"github.com/skydb/sky/db"
 )
 
 type StringLiteral struct {
@@ -35,19 +35,14 @@ func (l *StringLiteral) Codegen() (string, error) {
 		if err != nil {
 			return "", err
 		}
-		if variable.DataType == core.FactorDataType {
+		if variable.DataType == db.Factor {
 			targetName := variable.Name
 			if variable.Association != "" {
 				targetName = variable.Association
 			}
-			sequence, err := query.factorizer.Factorize(targetName, l.value, false)
-			if _, ok := err.(*db.FactorNotFound); ok {
-				return "0", nil
-			} else if err != nil {
-				return "", err
-			} else {
-				return strconv.FormatUint(sequence, 10), nil
-			}
+			p, _ := query.Tx.Property(targetName)
+			sequence, _ := query.Tx.Factorize(p.ID, l.value)
+			return strconv.FormatUint(uint64(sequence), 10), nil
 		}
 	}
 

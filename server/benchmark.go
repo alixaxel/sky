@@ -3,15 +3,16 @@ package server
 import (
 	"encoding/json"
 	"fmt"
-	"github.com/skydb/sky/core"
 	"io"
 	"log"
 	"math/rand"
 	"net/http"
 	"time"
+
+	"github.com/skydb/sky/db"
 )
 
-var PROPERTIES = []core.Property{
+var PROPERTIES = []db.Property{
 	{0, "first_name", false, "string"},
 	{0, "last_name", false, "string"},
 	{0, "email", false, "string"},
@@ -54,13 +55,13 @@ func randomString(l int) string {
 	return string(bytes)
 }
 
-func randomValueForProperty(p *core.Property) interface{} {
+func randomValueForProperty(p *db.Property) interface{} {
 	switch p.DataType {
-	case core.StringDataType, core.FactorDataType:
+	case db.String, db.Factor:
 		return randomString(1 + rand.Int()%10)
-	case core.IntegerDataType:
+	case db.Integer:
 		return rand.Int() % 10000000
-	case core.FloatDataType:
+	case db.Float:
 		return rand.Float64()
 	}
 	return ""

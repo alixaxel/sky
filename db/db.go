@@ -170,8 +170,5 @@ func (db *DB) table(name string) *Table {
 	}
 
 	// Create table instance and return it.
-	return &Table{
-		name: name,
-		path: db.tablePath(name),
-	}
+	return NewTable(name, db.tablePath(name))
 }

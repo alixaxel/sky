@@ -1,10 +1,11 @@
 package server
 
 import (
-	"github.com/gorilla/mux"
-	"github.com/skydb/sky/core"
-	"github.com/skydb/sky/query"
 	"net/http"
+
+	"github.com/gorilla/mux"
+	"github.com/skydb/sky/db"
+	"github.com/skydb/sky/query"
 )
 
 func (s *Server) addQueryHandlers() {
@@ -93,7 +94,7 @@ func (s *Server) queryCodegenHandler(w http.ResponseWriter, req *http.Request, p
 	return source, &TextPlainContentTypeError{}
 }
 
-func (s *Server) parseQuery(table *core.Table, params map[string]interface{}) (*query.Query, error) {
+func (s *Server) parseQuery(table *db.Table, params map[string]interface{}) (*query.Query, error) {
 	var err error
 
 	// Use raw post data as query if it's not JSON.

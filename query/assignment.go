@@ -4,7 +4,8 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/skydb/sky/core"
+
+	"github.com/skydb/sky/db"
 )
 
 // An Assignment statement sets a variable to a given value.
@@ -127,7 +128,7 @@ func (a *Assignment) CodegenAggregateFunction(init bool) (string, error) {
 	if variable == nil {
 		return "", fmt.Errorf("Assignment: %s", err)
 	}
-	if variable.DataType == core.StringDataType {
+	if variable.DataType == db.String {
 		return "", fmt.Errorf("Assignment: String assignment is not currently supported.")
 	}
 

@@ -4,17 +4,17 @@ import (
 	"bytes"
 	"encoding/json"
 	"fmt"
-	"github.com/skydb/sky/core"
-	"github.com/skydb/sky/db"
 	"io"
 	"sort"
 	"strings"
+
+	"github.com/skydb/sky/db"
 )
 
 // A Query is a structured way of aggregating data in the database.
 type Query struct {
-	table             *core.Table
-	factorizer        *db.Factorizer
+	Tx *db.Tx
+
 	source            string
 	refs              []*VarRef
 	sequence          int
@@ -27,27 +27,9 @@ type Query struct {
 // NewQuery returns a new query.
 func NewQuery() *Query {
 	q := &Query{statements: make(Statements, 0)}
-	q.addSystemVariable(NewVariable("@eos", core.BooleanDataType))
-	q.addSystemVariable(NewVariable("@eof", core.BooleanDataType))
+	q.addSystemVariable(NewVariable("@eos", db.Boolean))
+	q.addSystemVariable(NewVariable("@eof", db.Boolean))
 	return q
-}
-
-// Retrieves the table this query is associated with.
-func (q *Query) Table() *core.Table {
-	return q.table
-}
-
-func (q *Query) SetTable(table *core.Table) {
-	q.table = table
-}
-
-// Retrieves the factors database this query is associated with.
-func (q *Query) Factorizer() *db.Factorizer {
-	return q.factorizer
-}
-
-func (q *Query) SetFactorizer(factorizer *db.Factorizer) {
-	q.factorizer = factorizer
 }
 
 // Returns the top-level statements of the query.
@@ -102,13 +84,12 @@ func (q *Query) GetVariable(name string) *Variable {
 	}
 
 	// Try to find variable from schema first.
-	if q.Table() != nil && q.Table().PropertyFile() != nil {
-		p := q.Table().PropertyFile().GetPropertyByName(name)
-		if p != nil {
+	if q.Tx != nil {
+		if p, _ := q.Tx.Property(name); p != nil {
 			return &Variable{
 				Name:       p.Name,
 				DataType:   p.DataType,
-				PropertyId: p.Id,
+				PropertyId: int64(p.ID),
 			}
 		}
 	}
@@ -381,8 +362,7 @@ func (q *Query) Finalize(data interface{}) error {
 // Determines the minimum and maximum property identifiers that are used
 // in this query.
 func (q *Query) PropertyIdentifierRange() (int64, int64) {
-	maxPropertyId, minPropertyId := q.Table().PropertyFile().NextIdentifiers()
-	return minPropertyId, maxPropertyId
+	return int64(q.Tx.Table.MaxTransientID()), int64(q.Tx.Table.MaxPermanentID())
 }
 
 //--------------------------------------

@@ -4,11 +4,12 @@ import (
 	"encoding/json"
 	"fmt"
 	"github.com/gorilla/mux"
-	"github.com/skydb/sky/core"
 	"io"
 	"net/http"
 	"strconv"
 	"time"
+
+	"github.com/skydb/sky/db"
 )
 
 func (s *Server) addEventHandlers() {
@@ -101,7 +102,7 @@ func (s *Server) getEventHandler(w http.ResponseWriter, req *http.Request, param
 	}
 	// Return an empty event if there isn't one.
 	if event == nil {
-		event = core.NewEvent(vars["timestamp"], map[int64]interface{}{})
+		event = db.NewEvent(vars["timestamp"], map[int64]interface{}{})
 	}
 
 	// Convert an event to a serializable object.
@@ -168,9 +169,9 @@ func (s *Server) updateEventHandler(w http.ResponseWriter, req *http.Request, pa
 }
 
 // Used by streaming handler.
-type objectEvents map[string][]*core.Event
+type objectEvents map[string][]*db.Event
 
-func (s *Server) flushTableEvents(table *core.Table, objects objectEvents) (int, error) {
+func (s *Server) flushTableEvents(table *db.Table, objects objectEvents) (int, error) {
 	count, err := s.db.InsertObjects(table.Name, objects)
 	if err != nil {
 		return count, fmt.Errorf("Cannot put event: %v", err)

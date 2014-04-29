@@ -2,10 +2,11 @@ package server
 
 import (
 	"errors"
-	"github.com/gorilla/mux"
-	"github.com/skydb/sky/core"
 	"net/http"
 	"sort"
+
+	"github.com/gorilla/mux"
+	"github.com/skydb/sky/db"
 )
 
 func (s *Server) addTableHandlers() {
@@ -52,7 +53,7 @@ func (s *Server) createTableHandler(w http.ResponseWriter, req *http.Request, pa
 	}
 
 	// Otherwise create it.
-	table = core.NewTable(tableName, s.TablePath(tableName))
+	table = db.NewTable(tableName, s.TablePath(tableName))
 	err = table.Create()
 	if err != nil {
 		return nil, err

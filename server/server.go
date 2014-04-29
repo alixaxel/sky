@@ -18,7 +18,6 @@ import (
 	"github.com/boltdb/bolt"
 	"github.com/gorilla/mux"
 	"github.com/skydb/sky"
-	"github.com/skydb/sky/core"
 	"github.com/skydb/sky/db"
 	"github.com/skydb/sky/query"
 )
@@ -41,7 +40,7 @@ type Server struct {
 	db                   db.DB
 	path                 string
 	listener             net.Listener
-	tables               map[string]*core.Table
+	tables               map[string]*db.Table
 	shutdownChannel      chan bool
 	shutdownFinished     chan bool
 	mutex                sync.Mutex
@@ -82,7 +81,7 @@ func NewServer(port uint, path string) *Server {
 		router:               r,
 		logger:               log.New(os.Stdout, "", log.LstdFlags),
 		path:                 path,
-		tables:               make(map[string]*core.Table),
+		tables:               make(map[string]*db.Table),
 		StreamFlushPeriod:    60, // seconds
 		StreamFlushThreshold: 1000,
 	}
@@ -326,7 +325,7 @@ func (s *Server) decodeParams(w http.ResponseWriter, req *http.Request) (map[str
 //--------------------------------------
 
 // Retrieves a table that has already been opened.
-func (s *Server) GetTable(name string) *core.Table {
+func (s *Server) GetTable(name string) *db.Table {
 	s.mutex.Lock()
 	defer s.mutex.Unlock()
 	return s.tables[name]
@@ -334,17 +333,17 @@ func (s *Server) GetTable(name string) *core.Table {
 
 // Retrieves a list of all tables in the database but does not open them.
 // Do not use these table references for anything but informational purposes!
-func (s *Server) GetAllTables() ([]*core.Table, error) {
+func (s *Server) GetAllTables() ([]*db.Table, error) {
 	// Create a table object for each directory in the tables path.
 	infos, err := ioutil.ReadDir(s.TablesPath())
 	if err != nil {
 		return nil, err
 	}
 
-	tables := []*core.Table{}
+	tables := []*db.Table{}
 	for _, info := range infos {
 		if info.IsDir() {
-			tables = append(tables, core.NewTable(info.Name(), s.TablePath(info.Name())))
+			tables = append(tables, db.NewTable(info.Name(), s.TablePath(info.Name())))
 		}
 	}
 
@@ -352,7 +351,7 @@ func (s *Server) GetAllTables() ([]*core.Table, error) {
 }
 
 // Opens a table and returns a reference to it.
-func (s *Server) OpenTable(name string) (*core.Table, error) {
+func (s *Server) OpenTable(name string) (*db.Table, error) {
 	// If table already exists then use it.
 	table := s.GetTable(name)
 	if table != nil {
@@ -360,7 +359,7 @@ func (s *Server) OpenTable(name string) (*core.Table, error) {
 	}
 
 	// Otherwise open it and save the reference.
-	table = core.NewTable(name, s.TablePath(name))
+	table = db.NewTable(name, s.TablePath(name))
 	err := table.Open()
 	if err != nil {
 		table.Close()
@@ -379,7 +378,7 @@ func (s *Server) DeleteTable(name string) error {
 	// Return an error if the table doesn't exist.
 	table := s.GetTable(name)
 	if table == nil {
-		table = core.NewTable(name, s.TablePath(name))
+		table = db.NewTable(name, s.TablePath(name))
 	}
 	if !table.Exists() {
 		return fmt.Errorf("Table does not exist: %s", name)
@@ -403,7 +402,7 @@ func (s *Server) DeleteTable(name string) error {
 //--------------------------------------
 
 // Runs a query against a table.
-func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error) {
+func (s *Server) RunQuery(table *db.Table, q *query.Query) (interface{}, error) {
 
 	// Fail if prefix is not provided.
 	if q.Prefix == "" {
