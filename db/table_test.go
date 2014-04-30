@@ -13,7 +13,7 @@ import (
 // Ensure that a table can create new properties.
 func TestTableCreateProperty(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, err := db.CreateTable("foo", 0)
+		table, err := db.CreateTable("foo", 16)
 		assert.NoError(t, err)
 		table.Update(func(tx *Tx) error {
 			// Create permanent properties.
@@ -54,7 +54,7 @@ func TestTableCreateProperty(t *testing.T) {
 // Ensure that creating a property on an unopened table returns an error.
 func TestTableCreatePropertyNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			p, err := tx.CreateProperty("prop", Integer, false)
@@ -68,7 +68,7 @@ func TestTableCreatePropertyNotOpen(t *testing.T) {
 // Ensure that creating a property with an existing name returns an error.
 func TestTableCreatePropertyDuplicateName(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop", Integer, false)
 			p, err := tx.CreateProperty("prop", Float, false)
@@ -82,7 +82,7 @@ func TestTableCreatePropertyDuplicateName(t *testing.T) {
 // Ensure that creating a property that fails validation will return the validation error.
 func TestTableCreatePropertyInvalid(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			p, err := tx.CreateProperty("my•prop", Integer, false)
 			assert.Equal(t, err, errors.New("invalid property name: my•prop"))
@@ -95,7 +95,7 @@ func TestTableCreatePropertyInvalid(t *testing.T) {
 // Ensure that a property can be renamed.
 func TestTableRenameProperty(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop", Integer, false)
 			p, err := tx.RenameProperty("prop", "prop2")
@@ -110,7 +110,7 @@ func TestTableRenameProperty(t *testing.T) {
 // Ensure that renaming a property on a closed table returns an error.
 func TestTableRenamePropertyNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			p, err := tx.RenameProperty("prop", "prop2")
@@ -124,7 +124,7 @@ func TestTableRenamePropertyNotOpen(t *testing.T) {
 // Ensure that a renaming a non-existent property returns an error.
 func TestTableRenamePropertyNotFound(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			p, err := tx.RenameProperty("prop", "prop2")
 			assert.Equal(t, err, errors.New("property not found: prop"))
@@ -137,7 +137,7 @@ func TestTableRenamePropertyNotFound(t *testing.T) {
 // Ensure that a renaming a property to a name that already exists returns an error.
 func TestTableRenamePropertyAlreadyExists(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop", Integer, false)
 			tx.CreateProperty("prop2", Integer, false)
@@ -152,7 +152,7 @@ func TestTableRenamePropertyAlreadyExists(t *testing.T) {
 // Ensure that a table can delete properties.
 func TestTableDeleteProperty(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", String, false)
 			tx.CreateProperty("prop2", Factor, false)
@@ -191,7 +191,7 @@ func TestTableDeleteProperty(t *testing.T) {
 // Ensure that deleting a property on a closed table returns an error.
 func TestTableDeletePropertyNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			err := tx.DeleteProperty("prop2")
@@ -204,7 +204,7 @@ func TestTableDeletePropertyNotOpen(t *testing.T) {
 // Ensure that deleting a non-existent property returns an error.
 func TestTableDeletePropertyNotFound(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			err := tx.DeleteProperty("prop2")
 			assert.Equal(t, err, errors.New("property not found: prop2"))
@@ -216,7 +216,7 @@ func TestTableDeletePropertyNotFound(t *testing.T) {
 // Ensure that the table can return a map of properties by name.
 func TestTableProperties(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", String, true)
 			tx.CreateProperty("prop2", Factor, false)
@@ -232,7 +232,7 @@ func TestTableProperties(t *testing.T) {
 // Ensure that retrieving the properties of a table when it's closed returns an error.
 func TestTablePropertiesNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			p, err := tx.Properties()
@@ -246,7 +246,7 @@ func TestTablePropertiesNotOpen(t *testing.T) {
 // Ensure that the table can return a map of properties by id.
 func TestTablePropertiesByID(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", String, true)
 			tx.CreateProperty("prop2", Factor, false)
@@ -262,7 +262,7 @@ func TestTablePropertiesByID(t *testing.T) {
 // Ensure that retrieving the properties of a table by id when it's closed returns an error.
 func TestTablePropertiesByIDNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			p, err := tx.PropertiesByID()
@@ -276,7 +276,7 @@ func TestTablePropertiesByIDNotOpen(t *testing.T) {
 // Ensure that retrieving a property from a closed table returns an error.
 func TestTablePropertyNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			p, err := tx.Property("foo")
@@ -290,7 +290,7 @@ func TestTablePropertyNotOpen(t *testing.T) {
 // Ensure that the table can retrieve a property by id.
 func TestTablePropertyByID(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", String, true)
 			tx.CreateProperty("prop2", Factor, false)
@@ -314,7 +314,7 @@ func TestTablePropertyByID(t *testing.T) {
 // Ensure that retrieving a property by id from a closed table returns an error.
 func TestTablePropertyByIDNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			p, err := tx.PropertyByID(-1)
@@ -328,7 +328,7 @@ func TestTablePropertyByIDNotOpen(t *testing.T) {
 // Ensure that a table can create properties and persist them after a reopen.
 func TestTableReopen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", Integer, false)
 			tx.CreateProperty("prop2", String, true)
@@ -360,7 +360,7 @@ func TestTableReopen(t *testing.T) {
 // Ensure that retrieving an event while the database is closed returns an error.
 func TestTableGetEventNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			e, err := tx.Event("user1", mustParseTime("2000-01-01T00:00:01Z"))
@@ -374,7 +374,7 @@ func TestTableGetEventNotOpen(t *testing.T) {
 // Ensure that retrieving multiple events while the database is closed returns an error.
 func TestTableGetEventsNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			events, err := tx.Events("user1")
@@ -388,7 +388,7 @@ func TestTableGetEventsNotOpen(t *testing.T) {
 // Ensure that a table can insert an event.
 func TestTableInsertEvent(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", Integer, false)
 			tx.CreateProperty("prop2", String, true)
@@ -440,7 +440,7 @@ func TestTableInsertEvent(t *testing.T) {
 // Ensure that inserting an event into a closed table returns an error.
 func TestTableInsertEventNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			err := tx.InsertEvent("user1", newEvent("2000-01-01T00:00:01Z", "prop1", 20, "prop2", "bob"))
@@ -453,7 +453,7 @@ func TestTableInsertEventNotOpen(t *testing.T) {
 // Ensure that a table can insert multiple events.
 func TestTableInsertEvents(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", Integer, false)
 			tx.CreateProperty("prop2", String, true)
@@ -510,7 +510,7 @@ func TestTableInsertObjects(t *testing.T) {
 // Ensure that deleting events from a closed table returns an error.
 func TestTableDeleteEventNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			err := tx.DeleteEvent("user1", mustParseTime("2000-01-01T00:00:01Z"))
@@ -523,7 +523,7 @@ func TestTableDeleteEventNotOpen(t *testing.T) {
 // Ensure that a table can delete a single event.
 func TestTableDeleteEvent(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", Integer, false)
 			tx.InsertEvents("user1", []*Event{
@@ -569,7 +569,7 @@ func TestTableDeleteEvent(t *testing.T) {
 // Ensure that deleting all events from a closed table returns an error.
 func TestTableDeleteEventsNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			err := tx.DeleteEvents("user1")
@@ -582,7 +582,7 @@ func TestTableDeleteEventsNotOpen(t *testing.T) {
 // Ensure that inserting events into a closed table returns an error.
 func TestTableInsertEventsNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		db.Close()
 		table.Update(func(tx *Tx) error {
 			err := tx.InsertEvents("user1", []*Event{newEvent("2000-01-01T00:00:01Z", "prop1", 20, "prop2", "bob")})
@@ -595,7 +595,7 @@ func TestTableInsertEventsNotOpen(t *testing.T) {
 // Ensure that a table can delete all events.
 func TestTableDeleteEvents(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", Integer, false)
 			tx.InsertEvents("user1", []*Event{
@@ -626,7 +626,7 @@ func TestTableDeleteEvents(t *testing.T) {
 // Ensure that a table can factorize and defactorize events correctly.
 func TestTableFactorize(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", Factor, false)
 			tx.CreateProperty("prop2", Factor, false)
@@ -654,7 +654,7 @@ func TestTableFactorize(t *testing.T) {
 // Ensure that a table can factorize a large number of values beyond the cache.
 func TestTableFactorizeBeyondCache(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, _ := db.CreateTable("foo", 0)
+		table, _ := db.CreateTable("foo", 16)
 		table.Update(func(tx *Tx) error {
 			tx.CreateProperty("prop1", Factor, false)
 			tx.CreateProperty("prop2", Factor, false)

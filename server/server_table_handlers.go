@@ -60,7 +60,7 @@ func (s *Server) createTableHandler(w http.ResponseWriter, req *http.Request, pa
 	}
 
 	// Return an error if the table already exists.
-	table, err := s.DB.CreateTable(name, 0)
+	table, err := s.DB.CreateTable(name, 16)
 	if err != nil {
 		return nil, err
 	}

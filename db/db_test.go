@@ -28,7 +28,7 @@ func TestDBOpenAlreadyOpen(t *testing.T) {
 // Ensure that the database can create a table.
 func TestDBCreateTable(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, err := db.CreateTable("foo", 0)
+		table, err := db.CreateTable("foo", 16)
 		if assert.NoError(t, err) {
 			assert.NotNil(t, table)
 			assert.Equal(t, "foo", table.Name())
@@ -40,8 +40,8 @@ func TestDBCreateTable(t *testing.T) {
 // Ensure that creating a table that already exists returns an error.
 func TestDBCreateTableAlreadyExists(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		db.CreateTable("foo", 0)
-		table, err := db.CreateTable("foo", 0)
+		db.CreateTable("foo", 16)
+		table, err := db.CreateTable("foo", 16)
 		assert.Equal(t, errors.New("table already exists: foo"), err)
 		assert.Nil(t, table)
 	})
@@ -50,7 +50,7 @@ func TestDBCreateTableAlreadyExists(t *testing.T) {
 // Ensure that creating a table while the database is closed returns an error.
 func TestDBCreateTableWhileClosed(t *testing.T) {
 	var db DB
-	table, err := db.CreateTable("foo", 0)
+	table, err := db.CreateTable("foo", 16)
 	assert.Equal(t, ErrDatabaseNotOpen, err)
 	assert.Nil(t, table)
 }
@@ -58,7 +58,7 @@ func TestDBCreateTableWhileClosed(t *testing.T) {
 // Ensure that opening a table returns a cached reference.
 func TestDBOpenTable(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		t0, _ := db.CreateTable("foo", 0)
+		t0, _ := db.CreateTable("foo", 16)
 
 		// Opening it should return the reference from create.
 		t1, err := db.OpenTable("foo")
@@ -77,7 +77,7 @@ func TestDBOpenTable(t *testing.T) {
 // Ensure that opening an unnamed table returned an error.
 func TestDBOpenTableNameRequired(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		table, err := db.CreateTable("", 0)
+		table, err := db.CreateTable("", 16)
 		assert.Equal(t, err, ErrTableNameRequired)
 		assert.Nil(t, table)
 	})
@@ -86,7 +86,7 @@ func TestDBOpenTableNameRequired(t *testing.T) {
 // Ensure that a table can be dropped.
 func TestDBDropTable(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		db.CreateTable("foo", 0)
+		db.CreateTable("foo", 16)
 		err := db.DropTable("foo")
 		assert.NoError(t, err)
 
@@ -100,7 +100,7 @@ func TestDBDropTable(t *testing.T) {
 // Ensure that dropping a table while the database is closed returns an error.
 func TestDBDropTableNotOpen(t *testing.T) {
 	withDB(func(db *DB, path string) {
-		db.CreateTable("foo", 0)
+		db.CreateTable("foo", 16)
 		db.Close()
 		err := db.DropTable("foo")
 		assert.Equal(t, err, ErrDatabaseNotOpen)
