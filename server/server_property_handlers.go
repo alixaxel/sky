@@ -1,9 +1,11 @@
 package server
 
 import (
-	"errors"
-	"github.com/gorilla/mux"
 	"net/http"
+	"sort"
+
+	"github.com/gorilla/mux"
+	"github.com/skydb/sky/db"
 )
 
 func (s *Server) addPropertyHandlers() {
@@ -34,7 +36,16 @@ func (s *Server) getPropertiesHandler(w http.ResponseWriter, req *http.Request, 
 		return nil, err
 	}
 
-	return table.GetProperties()
+	var properties = make(db.PropertySlice, 0)
+	table.View(func(tx *db.Tx) error {
+		propertiesById, _ := tx.Properties()
+		for _, p := range propertiesById {
+			properties = append(properties, p)
+		}
+		return nil
+	})
+	sort.Sort(properties)
+	return properties, nil
 }
 
 // POST /tables/:name/properties
@@ -48,7 +59,14 @@ func (s *Server) createPropertyHandler(w http.ResponseWriter, req *http.Request,
 	name, _ := params["name"].(string)
 	transient, _ := params["transient"].(bool)
 	dataType, _ := params["dataType"].(string)
-	return table.CreateProperty(name, transient, dataType)
+
+	var p *db.Property
+	err = table.Update(func(tx *db.Tx) error {
+		var err error
+		p, err = tx.CreateProperty(name, dataType, transient)
+		return err
+	})
+	return p, err
 }
 
 // GET /tables/:name/properties/:propertyName
@@ -59,7 +77,13 @@ func (s *Server) getPropertyHandler(w http.ResponseWriter, req *http.Request, pa
 		return nil, err
 	}
 
-	return table.GetPropertyByName(vars["propertyName"])
+	var p *db.Property
+	err = table.View(func(tx *db.Tx) error {
+		var err error
+		p, err = tx.Property(vars["propertyName"])
+		return err
+	})
+	return p, err
 }
 
 // PATCH /tables/:name/properties/:propertyName
@@ -69,25 +93,15 @@ func (s *Server) updatePropertyHandler(w http.ResponseWriter, req *http.Request,
 	if err != nil {
 		return nil, err
 	}
-
-	// Retrieve property.
-	property, err := table.GetPropertyByName(vars["propertyName"])
-	if err != nil {
-		return nil, err
-	}
-	if property == nil {
-		return nil, errors.New("Property does not exist.")
-	}
-
-	// Update property and save property file.
 	name, _ := params["name"].(string)
-	property.Name = name
-	err = table.SavePropertyFile()
-	if err != nil {
-		return nil, err
-	}
 
-	return property, nil
+	var p *db.Property
+	err = table.Update(func(tx *db.Tx) error {
+		var err error
+		p, err = tx.RenameProperty(vars["propertyName"], name)
+		return err
+	})
+	return p, err
 }
 
 // DELETE /tables/:name/properties/:propertyName
@@ -97,21 +111,8 @@ func (s *Server) deletePropertyHandler(w http.ResponseWriter, req *http.Request,
 	if err != nil {
 		return nil, err
 	}
-	// Retrieve property.
-	property, err := table.GetPropertyByName(vars["propertyName"])
-	if err != nil {
-		return nil, err
-	}
-	if property == nil {
-		return nil, errors.New("Property does not exist.")
-	}
 
-	// Delete property and save property file.
-	table.DeleteProperty(property)
-	err = table.SavePropertyFile()
-	if err != nil {
-		return nil, err
-	}
-
-	return nil, nil
+	return nil, table.Update(func(tx *db.Tx) error {
+		return tx.DeleteProperty(vars["propertyName"])
+	})
 }

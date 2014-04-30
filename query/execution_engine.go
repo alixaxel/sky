@@ -1044,7 +1044,7 @@ import (
 	"unsafe"
 
 	"github.com/boltdb/bolt"
-	"github.com/skydb/sky/core"
+	"github.com/skydb/sky/db"
 	"github.com/ugorji/go/codec"
 )
 
@@ -1445,7 +1445,7 @@ func variableStructDef(args ...interface{}) string {
 func metatypeFunctionDef(args ...interface{}) string {
 	if variable, ok := args[0].(*Variable); ok && !variable.IsSystemVariable() {
 		switch variable.DataType {
-		case core.StringDataType:
+		case db.String:
 			return fmt.Sprintf("%v = function(event) return ffi.string(event._%v.data, event._%v.length) end,", variable.Name, variable.Name, variable.Name)
 		default:
 			return fmt.Sprintf("%v = function(event) return event._%v end,", variable.Name, variable.Name)

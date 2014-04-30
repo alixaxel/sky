@@ -15,10 +15,8 @@ import (
 	"sync"
 	"time"
 
-	"github.com/boltdb/bolt"
 	"github.com/gorilla/mux"
 	"github.com/skydb/sky"
-	"github.com/skydb/sky/core"
 	"github.com/skydb/sky/db"
 	"github.com/skydb/sky/query"
 )
@@ -35,13 +33,14 @@ var defaultServletCount = runtime.NumCPU()
 
 // A Server is the front end that controls access to tables.
 type Server struct {
+	DB *db.DB
+
 	httpServer           *http.Server
 	router               *mux.Router
 	logger               *log.Logger
-	db                   db.DB
 	path                 string
 	listener             net.Listener
-	tables               map[string]*core.Table
+	tables               map[string]*db.Table
 	shutdownChannel      chan bool
 	shutdownFinished     chan bool
 	mutex                sync.Mutex
@@ -82,7 +81,7 @@ func NewServer(port uint, path string) *Server {
 		router:               r,
 		logger:               log.New(os.Stdout, "", log.LstdFlags),
 		path:                 path,
-		tables:               make(map[string]*core.Table),
+		tables:               make(map[string]*db.Table),
 		StreamFlushPeriod:    60, // seconds
 		StreamFlushThreshold: 1000,
 	}
@@ -91,7 +90,6 @@ func NewServer(port uint, path string) *Server {
 	s.addTableHandlers()
 	s.addPropertyHandlers()
 	s.addEventHandlers()
-	s.addObjectHandlers()
 	s.addQueryHandlers()
 	s.addDebugHandlers()
 
@@ -109,14 +107,9 @@ func (s *Server) Path() string {
 	return s.path
 }
 
-// The path to the table metadata directory.
-func (s *Server) TablesPath() string {
-	return fmt.Sprintf("%v/tables", s.path)
-}
-
 // Generates the path for a table attached to the server.
 func (s *Server) TablePath(name string) string {
-	return fmt.Sprintf("%v/%v", s.TablesPath(), name)
+	return fmt.Sprintf("%v/%v", s.path, name)
 }
 
 //------------------------------------------------------------------------------
@@ -197,8 +190,8 @@ func (s *Server) open() error {
 	}
 
 	// Initialize and open database.
-	s.db = db.New(s.path)
-	if err = s.db.Open(); err != nil {
+	s.DB = &db.DB{}
+	if err = s.DB.Open(s.path); err != nil {
 		s.close()
 		return err
 	}
@@ -208,9 +201,9 @@ func (s *Server) open() error {
 
 // Closes the database.
 func (s *Server) close() {
-	if s.db != nil {
-		s.db.Close()
-		s.db = nil
+	if s.DB != nil {
+		s.DB.Close()
+		s.DB = nil
 	}
 }
 
@@ -218,12 +211,6 @@ func (s *Server) close() {
 func (s *Server) createIfNotExists() error {
 	// Create root directory.
 	err := os.MkdirAll(s.path, 0700)
-	if err != nil {
-		return err
-	}
-
-	// Create tables directory.
-	err = os.MkdirAll(s.TablesPath(), 0700)
 	if err != nil {
 		return err
 	}
@@ -325,77 +312,31 @@ func (s *Server) decodeParams(w http.ResponseWriter, req *http.Request) (map[str
 // Table Management
 //--------------------------------------
 
-// Retrieves a table that has already been opened.
-func (s *Server) GetTable(name string) *core.Table {
-	s.mutex.Lock()
-	defer s.mutex.Unlock()
-	return s.tables[name]
-}
-
 // Retrieves a list of all tables in the database but does not open them.
 // Do not use these table references for anything but informational purposes!
-func (s *Server) GetAllTables() ([]*core.Table, error) {
+func (s *Server) Tables() ([]*db.Table, error) {
 	// Create a table object for each directory in the tables path.
-	infos, err := ioutil.ReadDir(s.TablesPath())
+	infos, err := ioutil.ReadDir(s.path)
 	if err != nil {
 		return nil, err
 	}
 
-	tables := []*core.Table{}
+	tables := []*db.Table{}
 	for _, info := range infos {
-		if info.IsDir() {
-			tables = append(tables, core.NewTable(info.Name(), s.TablePath(info.Name())))
-		}
+		tables = append(tables, db.NewTable(info.Name(), s.TablePath(info.Name())))
 	}
 
 	return tables, nil
 }
 
 // Opens a table and returns a reference to it.
-func (s *Server) OpenTable(name string) (*core.Table, error) {
-	// If table already exists then use it.
-	table := s.GetTable(name)
-	if table != nil {
-		return table, nil
-	}
-
-	// Otherwise open it and save the reference.
-	table = core.NewTable(name, s.TablePath(name))
-	err := table.Open()
-	if err != nil {
-		table.Close()
-		return nil, err
-	}
-
-	s.mutex.Lock()
-	s.tables[name] = table
-	s.mutex.Unlock()
-
-	return table, nil
+func (s *Server) OpenTable(name string) (*db.Table, error) {
+	return s.DB.OpenTable(name)
 }
 
 // Deletes a table.
-func (s *Server) DeleteTable(name string) error {
-	// Return an error if the table doesn't exist.
-	table := s.GetTable(name)
-	if table == nil {
-		table = core.NewTable(name, s.TablePath(name))
-	}
-	if !table.Exists() {
-		return fmt.Errorf("Table does not exist: %s", name)
-	}
-
-	// Delete data from the data store.
-	if err := s.db.Drop(name); err != nil {
-		return err
-	}
-
-	// Remove the table from the lookup and remove it's core.
-	s.mutex.Lock()
-	delete(s.tables, name)
-	defer s.mutex.Unlock()
-
-	return table.Delete()
+func (s *Server) DropTable(name string) error {
+	return s.DB.DropTable(name)
 }
 
 //--------------------------------------
@@ -403,22 +344,19 @@ func (s *Server) DeleteTable(name string) error {
 //--------------------------------------
 
 // Runs a query against a table.
-func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error) {
+func (s *Server) RunQuery(tx *db.Tx, q *query.Query) (interface{}, error) {
 
 	// Fail if prefix is not provided.
 	if q.Prefix == "" {
 		return nil, errors.New("Prefix is required on queries.")
 	}
 
-	engines := make([]*query.ExecutionEngine, 0)
+	var result interface{}
+	result = make(map[interface{}]interface{})
+	var engines = make([]*query.ExecutionEngine, 0)
 
 	// Retrieve low-level cursors for iterating.
-	buckets := s.db.Buckets(table.Name)
-	defer func(buckets []*bolt.Bucket) {
-		for _, b := range buckets {
-			b.Tx().Rollback()
-		}
-	}(buckets)
+	buckets := tx.Shards()
 
 	// Create a channel to receive aggregate responses.
 	rchannel := make(chan interface{}, len(buckets))
@@ -468,8 +406,6 @@ func (s *Server) RunQuery(table *core.Table, q *query.Query) (interface{}, error
 
 	// Wait for each servlet to complete and then merge the results.
 	var servletError error
-	var result interface{}
-	result = make(map[interface{}]interface{})
 	for _, _ = range buckets {
 		ret := <-rchannel
 		if err, ok := ret.(error); ok {

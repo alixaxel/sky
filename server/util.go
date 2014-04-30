@@ -18,7 +18,10 @@ func ConvertToStringKeys(value interface{}) interface{} {
 	return value
 }
 
-// Writes to standard error.
-func warn(msg string, v ...interface{}) {
+func warn(v ...interface{}) {
+	fmt.Fprintln(os.Stderr, v...)
+}
+
+func warnf(msg string, v ...interface{}) {
 	fmt.Fprintf(os.Stderr, msg+"\n", v...)
 }

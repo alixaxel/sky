@@ -4,7 +4,7 @@ import (
 	"bytes"
 	"errors"
 	"fmt"
-	"github.com/skydb/sky/core"
+	"github.com/skydb/sky/db"
 	"strconv"
 	"strings"
 )
@@ -348,7 +348,7 @@ func (s *Selection) defactorize(data interface{}, index int) error {
 	if outer, ok := inner[dimension].(map[interface{}]interface{}); ok {
 		copy := map[interface{}]interface{}{}
 		for k, v := range outer {
-			if variable.DataType == core.FactorDataType {
+			if variable.DataType == db.Factor {
 				// Only process this if it hasn't been defactorized already. Duplicate
 				// defactorization can occur if there are multiple overlapping selections.
 				if sequence, ok := normalize(k).(int64); ok {
@@ -359,7 +359,8 @@ func (s *Selection) defactorize(data interface{}, index int) error {
 						factorDimension = variable.Association
 					}
 
-					stringValue, err := query.factorizer.Defactorize(factorDimension, uint64(sequence))
+					p, _ := query.Tx.Property(factorDimension)
+					stringValue, err := query.Tx.Defactorize(p.ID, int(sequence))
 					if err != nil {
 						return err
 					}
@@ -400,7 +401,7 @@ func (s *Selection) defactorizeNonAggregateFields(data interface{}) error {
 				if ref, ok := field.Expression().(*VarRef); ok && !field.IsAggregate() {
 					if variable, err := ref.Variable(); err != nil {
 						return err
-					} else if variable.DataType == core.FactorDataType {
+					} else if variable.DataType == db.Factor {
 						name := field.CodegenName()
 						if sequence, ok := normalize(row[name]).(int64); ok {
 							factorName := variable.Name
@@ -408,7 +409,8 @@ func (s *Selection) defactorizeNonAggregateFields(data interface{}) error {
 								factorName = variable.Association
 							}
 
-							stringValue, err := query.factorizer.Defactorize(factorName, uint64(sequence))
+							p, _ := query.Tx.Property(factorName)
+							stringValue, err := query.Tx.Defactorize(p.ID, int(sequence))
 							if err != nil {
 								return err
 							}

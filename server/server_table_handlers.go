@@ -2,10 +2,11 @@ package server
 
 import (
 	"errors"
-	"github.com/gorilla/mux"
-	"github.com/skydb/sky/core"
 	"net/http"
 	"sort"
+
+	"github.com/gorilla/mux"
+	"github.com/skydb/sky/db"
 )
 
 func (s *Server) addTableHandlers() {
@@ -28,45 +29,49 @@ func (s *Server) addTableHandlers() {
 
 // GET /tables
 func (s *Server) getTablesHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
-	return s.GetAllTables()
+	var tables, err = s.Tables()
+	if err != nil {
+		return nil, err
+	}
+
+	var messages = make([]*tableMessage, 0)
+	for _, t := range tables {
+		messages = append(messages, &tableMessage{t.Name()})
+	}
+	return messages, nil
 }
 
 // GET /tables/:name
 func (s *Server) getTableHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 	vars := mux.Vars(req)
-	return s.OpenTable(vars["name"])
+	t, err := s.OpenTable(vars["name"])
+	if err != nil {
+		return nil, err
+	}
+	return &tableMessage{t.Name()}, nil
 }
 
 // POST /tables
 func (s *Server) createTableHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 	// Retrieve table parameters.
-	tableName, ok := params["name"].(string)
+	name, ok := params["name"].(string)
 	if !ok {
 		return nil, errors.New("Table name required.")
 	}
 
 	// Return an error if the table already exists.
-	table, err := s.OpenTable(tableName)
-	if table != nil {
-		return nil, errors.New("Table already exists.")
-	}
-
-	// Otherwise create it.
-	table = core.NewTable(tableName, s.TablePath(tableName))
-	err = table.Create()
+	table, err := s.DB.CreateTable(name, 16)
 	if err != nil {
 		return nil, err
 	}
-
-	return table, nil
+	return &tableMessage{table.Name()}, nil
 }
 
 // DELETE /tables/:name
 func (s *Server) deleteTableHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 	vars := mux.Vars(req)
 	tableName := vars["name"]
-
-	return nil, s.DeleteTable(tableName)
+	return nil, s.DB.DropTable(tableName)
 }
 
 // GET /tables/:name/objects/keys
@@ -77,17 +82,21 @@ func (s *Server) tableKeysHandler(w http.ResponseWriter, req *http.Request, para
 		return nil, err
 	}
 
-	buckets := s.db.Buckets(t.Name)
-
-	keys := []string{}
-	for _, b := range buckets {
-		defer b.Tx().Rollback()
-		c := b.Cursor()
-		for bkey, _ := c.First(); bkey != nil; bkey, _ = c.Next() {
-			keys = append(keys, string(bkey))
+	var keys = make([]string, 0)
+	_ = t.View(func(tx *db.Tx) error {
+		for _, b := range tx.Shards() {
+			b.ForEach(func(b, _ []byte) error {
+				keys = append(keys, string(b))
+				return nil
+			})
 		}
-	}
+		return nil
+	})
 	sort.Strings(keys)
 
 	return keys, nil
+}
+
+type tableMessage struct {
+	Name string `json:"name"`
 }

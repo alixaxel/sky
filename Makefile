@@ -26,7 +26,6 @@ build: get
 	$(GO) build -a -o bin/skyd ./skyd/main.go
 
 test:
-	${MAKE} -C core test
 	${MAKE} -C db test
 	${MAKE} -C query test
 	${MAKE} -C server test

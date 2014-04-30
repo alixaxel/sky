@@ -1,247 +1,131 @@
-package db
+package db_test
 
 import (
+	"errors"
 	"io/ioutil"
 	"os"
-	"sort"
+	"path/filepath"
 	"testing"
-	"time"
 
-	"github.com/skydb/sky/core"
+	. "github.com/skydb/sky/db"
 	"github.com/stretchr/testify/assert"
 )
 
-func TestDB(t *testing.T) {
-	db := New("/tmp/sky").(*db)
-	assert.Equal(t, db.dataPath(), "/tmp/sky/data", "")
-	assert.Equal(t, db.shardPath(2), "/tmp/sky/data/2", "")
-}
-
-func TestDBInsertEvent(t *testing.T) {
-	withDB(func(db *db) {
-		assert.NoError(t, db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john")))
-		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		assert.Nil(t, err, "")
-		assert.Equal(t, e.Timestamp, musttime("2000-01-01T00:00:00Z"), "")
-		assert.Equal(t, e.Data[1], "john", "")
+// Ensure that the database can open and set its path correctly.
+func TestDBOpen(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		assert.Equal(t, path, db.Path())
 	})
 }
 
-func TestDBInsertEvents(t *testing.T) {
-	withDB(func(db *db) {
-		input := []*core.Event{
-			testevent("2000-01-01T00:00:02Z", 2, 100),
-			testevent("2000-01-01T00:00:00Z", 1, "john"),
+// Ensure that the database returns an error if opened while already open.
+func TestDBOpenAlreadyOpen(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		assert.Equal(t, errors.New("database already open"), db.Open("/foo/bar"))
+	})
+}
+
+// Ensure that the database can create a table.
+func TestDBCreateTable(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		table, err := db.CreateTable("foo", 16)
+		if assert.NoError(t, err) {
+			assert.NotNil(t, table)
+			assert.Equal(t, "foo", table.Name())
+			assert.Equal(t, "foo", filepath.Base(table.Path()))
 		}
-		db.InsertEvents("foo", "bar", input)
-		events, err := db.GetEvents("foo", "bar")
-		assert.Nil(t, err, "")
-		assert.Equal(t, len(events), 2, "")
-		assert.Equal(t, events[0].Timestamp, musttime("2000-01-01T00:00:00Z"), "")
-		assert.Equal(t, events[0].Data[1], "john", "")
-		assert.Equal(t, events[1].Timestamp, musttime("2000-01-01T00:00:02Z"), "")
-		assert.Equal(t, events[1].Data[2], 100, "")
 	})
 }
 
-func TestDBInsertObjects(t *testing.T) {
-	withDB(func(db *db) {
-		input := map[string][]*core.Event{
-			"bar": []*core.Event{
-				testevent("2000-01-01T00:00:02Z", 2, 100),
-				testevent("2000-01-01T00:00:00Z", 1, "john"),
-			},
-			"bat": []*core.Event{
-				testevent("2000-01-01T00:00:00Z", 1, "jose"),
-			},
+// Ensure that creating a table that already exists returns an error.
+func TestDBCreateTableAlreadyExists(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		db.CreateTable("foo", 16)
+		table, err := db.CreateTable("foo", 16)
+		assert.Equal(t, errors.New("table already exists: foo"), err)
+		assert.Nil(t, table)
+	})
+}
+
+// Ensure that creating a table while the database is closed returns an error.
+func TestDBCreateTableWhileClosed(t *testing.T) {
+	var db DB
+	table, err := db.CreateTable("foo", 16)
+	assert.Equal(t, ErrDatabaseNotOpen, err)
+	assert.Nil(t, table)
+}
+
+// Ensure that opening a table returns a cached reference.
+func TestDBOpenTable(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		t0, _ := db.CreateTable("foo", 16)
+
+		// Opening it should return the reference from create.
+		t1, err := db.OpenTable("foo")
+		if assert.NoError(t, err) {
+			assert.True(t, t0 == t1)
 		}
 
-		n, err := db.InsertObjects("foo", input)
-		assert.Nil(t, err, "")
-		assert.Equal(t, n, 3, "")
-
-		events, err := db.GetEvents("foo", "bar")
-		assert.Nil(t, err, "")
-		assert.Equal(t, len(events), 2, "")
-		assert.Equal(t, events[0].Timestamp, musttime("2000-01-01T00:00:00Z"), "")
-		assert.Equal(t, events[0].Data[1], "john", "")
-		assert.Equal(t, events[1].Timestamp, musttime("2000-01-01T00:00:02Z"), "")
-		assert.Equal(t, events[1].Data[2], 100, "")
-
-		events, err = db.GetEvents("foo", "bat")
-		assert.Nil(t, err, "")
-		assert.Equal(t, len(events), 1, "")
-		assert.Equal(t, events[0].Timestamp, musttime("2000-01-01T00:00:00Z"), "")
-		assert.Equal(t, events[0].Data[1], "jose", "")
+		// Open it again just for kicks.
+		t2, err := db.OpenTable("foo")
+		if assert.NoError(t, err) {
+			assert.True(t, t0 == t2)
+		}
 	})
 }
 
-func TestDBInsertNonSequentialEvents(t *testing.T) {
-	withDB(func(db *db) {
-		db.InsertEvent("foo", "bar", testevent("2000-01-02T00:00:00Z", 1, "john", -1, 100))
-		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "jane", 2, "test"))
-		db.InsertEvent("foo", "bar", testevent("2000-01-03T00:00:00Z", 1, "jose"))
-		events, err := db.GetEvents("foo", "bar")
-		assert.Nil(t, err, "")
-		assert.Equal(t, len(events), 3, "")
-		assert.Equal(t, events[0].Timestamp, musttime("2000-01-01T00:00:00Z"), "")
-		assert.Equal(t, events[0].Data[-1], nil, "")
-		assert.Equal(t, events[0].Data[1], "jane", "")
-		assert.Equal(t, events[0].Data[2], "test", "")
-		assert.Equal(t, events[1].Timestamp, musttime("2000-01-02T00:00:00Z"), "")
-		assert.Equal(t, events[1].Data[-1], 100, "")
-		assert.Equal(t, events[1].Data[1], "john", "")
-		assert.Equal(t, events[1].Data[2], nil, "")
-		assert.Equal(t, events[2].Timestamp, musttime("2000-01-03T00:00:00Z"), "")
-		assert.Equal(t, events[2].Data[-1], nil, "")
-		assert.Equal(t, events[2].Data[1], "jose", "")
-		assert.Equal(t, events[2].Data[2], nil, "")
+// Ensure that opening an unnamed table returned an error.
+func TestDBOpenTableNameRequired(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		table, err := db.CreateTable("", 16)
+		assert.Equal(t, err, ErrTableNameRequired)
+		assert.Nil(t, table)
 	})
 }
 
-func TestDBDeleteEvent(t *testing.T) {
-	withDB(func(db *db) {
-		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		db.DeleteEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		assert.Nil(t, err, "")
-		assert.Nil(t, e, "")
+// Ensure that a table can be dropped.
+func TestDBDropTable(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		db.CreateTable("foo", 16)
+		err := db.DropTable("foo")
+		assert.NoError(t, err)
+
+		// Opening it should return "not found".
+		table, err := db.OpenTable("foo")
+		assert.Equal(t, errors.New("table not found: foo"), err)
+		assert.Nil(t, table)
 	})
 }
 
-func TestDBDeleteMissingEvent(t *testing.T) {
-	withDB(func(db *db) {
-		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		db.DeleteEvent("foo", "bar", musttime("2000-01-02T00:00:00Z"))
-		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		assert.Nil(t, err, "")
-		assert.NotNil(t, e, "")
-	})
-}
-
-func TestDBDeleteObject(t *testing.T) {
-	withDB(func(db *db) {
-		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		db.InsertEvent("foo", "bar", testevent("2000-01-02T00:00:00Z", 1, "jane"))
-		db.DeleteObject("foo", "bar")
-		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		assert.Nil(t, err, "")
-		assert.Nil(t, e, "")
-	})
-}
-
-func TestDBMerge(t *testing.T) {
-	withDB(func(db *db) {
-		db.InsertEvent("foo", "bar", testevent("2000-01-03T00:00:00Z", 1, "john"))
-		db.InsertEvent("foo", "bar", testevent("2000-01-02T00:00:00Z", 1, "jane"))
-		db.InsertEvent("foo", "bat", testevent("2000-01-02T00:00:00Z", 1, "joe"))
-		db.InsertEvent("foo", "bat", testevent("2000-01-01T00:00:00Z", 1, "jose"))
-		err := db.Merge("foo", "bar", "bat")
-		events, err := db.GetEvents("foo", "bar")
-		assert.Nil(t, err, "")
-		assert.Equal(t, len(events), 3, "")
-		assert.Equal(t, events[0].Timestamp, musttime("2000-01-01T00:00:00Z"), "")
-		assert.Equal(t, events[0].Data[1], "jose", "")
-		assert.Equal(t, events[1].Timestamp, musttime("2000-01-02T00:00:00Z"), "")
-		assert.Equal(t, events[1].Data[1], "joe", "")
-		assert.Equal(t, events[2].Timestamp, musttime("2000-01-03T00:00:00Z"), "")
-		assert.Equal(t, events[2].Data[1], "john", "")
-		events, err = db.GetEvents("foo", "bat")
-		assert.Nil(t, err, "")
-		assert.Equal(t, len(events), 0, "")
-	})
-}
-
-func TestDBReopen(t *testing.T) {
-	tmp := defaultShardCount
-	defaultShardCount = 2
-	withDB(func(db *db) {
-		defaultShardCount = tmp
-
-		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
+// Ensure that dropping a table while the database is closed returns an error.
+func TestDBDropTableNotOpen(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		db.CreateTable("foo", 16)
 		db.Close()
-
-		err := db.Open()
-		assert.Nil(t, err, "")
-		assert.Equal(t, len(db.shards), 2, "")
-
-		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		assert.Nil(t, err, "")
-		assert.NotNil(t, e, "")
-		if e == nil {
-			return
-		}
-		assert.Equal(t, e.Timestamp, musttime("2000-01-01T00:00:00Z"), "")
-		assert.Equal(t, e.Data[1], "john", "")
+		err := db.DropTable("foo")
+		assert.Equal(t, err, ErrDatabaseNotOpen)
 	})
 }
 
-func TestDBuckets(t *testing.T) {
-	withDB(func(db *db) {
-		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		db.InsertEvent("foo", "baz", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		buckets := db.Buckets("foo")
-		assert.True(t, len(buckets) > 0)
-		keys := make([]string, 0)
-		for _, b := range buckets {
-			c := b.Cursor()
-			defer b.Tx().Rollback()
-			for key, _ := c.First(); key != nil; key, _ = c.Next() {
-				keys = append(keys, string(key))
-			}
-		}
-		sort.Strings(keys)
-		assert.Equal(t, keys, []string{"bar", "baz"}, "")
+// Ensure that dropping a non-existent table returns an error.
+func TestDBDropTableNotFound(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		err := db.DropTable("foo")
+		assert.Equal(t, err, errors.New("table not found: foo"))
 	})
 }
 
-func TestDBStats(t *testing.T) {
-	withDB(func(db *db) {
-		count, err := db.shardCount()
-		assert.Nil(t, err, "")
-		stats := db.Stats()
-		assert.Nil(t, err, "")
-		assert.Equal(t, len(stats), count)
-	})
-}
+func withDB(fn func(db *DB, path string)) {
+	f, _ := ioutil.TempFile("", "")
+	f.Close()
+	os.Remove(f.Name())
+	defer os.RemoveAll(f.Name())
 
-func TestDBDrop(t *testing.T) {
-	withDB(func(db *db) {
-		db.InsertEvent("foo", "bar", testevent("2000-01-01T00:00:00Z", 1, "john"))
-		db.Drop("foo")
-		e, err := db.GetEvent("foo", "bar", musttime("2000-01-01T00:00:00Z"))
-		assert.NotNil(t, err, "")
-		assert.Nil(t, e, "")
-	})
-}
-
-func withDB(f func(db *db)) {
-	path, _ := ioutil.TempDir("", "")
-	defer os.RemoveAll(path)
-
-	db := New(path).(*db)
-	if err := db.Open(); err != nil {
+	db := &DB{NoSync: true}
+	if err := db.Open(f.Name()); err != nil {
 		panic(err.Error())
 	}
 	defer db.Close()
 
-	f(db)
-}
-
-func testevent(timestamp string, args ...interface{}) *core.Event {
-	e := &core.Event{Timestamp: musttime(timestamp)}
-	e.Data = make(map[int64]interface{})
-	for i := 0; i < len(args); i += 2 {
-		key := args[i].(int)
-		e.Data[int64(key)] = args[i+1]
-	}
-	return e
-}
-
-func musttime(timestamp string) time.Time {
-	t, err := time.Parse(time.RFC3339, timestamp)
-	if err != nil {
-		panic(err)
-	}
-	return t
+	fn(db, f.Name())
 }

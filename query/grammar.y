@@ -3,7 +3,7 @@
 package query
 
 import (
-    "github.com/skydb/sky/core"
+    "github.com/skydb/sky/db"
 )
 
 %}
@@ -179,11 +179,11 @@ variable_association :
 ;
 
 data_type :
-    TFACTOR  { $$ = core.FactorDataType }
-|   TSTRING  { $$ = core.StringDataType }
-|   TINTEGER { $$ = core.IntegerDataType }
-|   TFLOAT   { $$ = core.FloatDataType }
-|   TBOOLEAN { $$ = core.BooleanDataType }
+    TFACTOR  { $$ = db.Factor }
+|   TSTRING  { $$ = db.String }
+|   TINTEGER { $$ = db.Integer }
+|   TFLOAT   { $$ = db.Float }
+|   TBOOLEAN { $$ = db.Boolean }
 ;
 
 assignment :

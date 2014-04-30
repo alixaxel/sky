@@ -2,7 +2,8 @@ package query
 
 import (
 	"fmt"
-	"github.com/skydb/sky/core"
+
+	"github.com/skydb/sky/db"
 )
 
 // A Variable represents a variable declaration on the cursor. The value
@@ -30,13 +31,13 @@ func (v *Variable) IsSystemVariable() bool {
 // Returns the C data type used by this variable.
 func (v *Variable) cType() string {
 	switch v.DataType {
-	case core.StringDataType:
+	case db.String:
 		return "sky_string_t"
-	case core.FactorDataType, core.IntegerDataType:
+	case db.Factor, db.Integer:
 		return "int32_t"
-	case core.FloatDataType:
+	case db.Float:
 		return "double"
-	case core.BooleanDataType:
+	case db.Boolean:
 		return "bool"
 	}
 	panic(fmt.Sprintf("Invalid data type: %v", v.DataType))
@@ -49,15 +50,15 @@ func (v *Variable) Codegen() (string, error) {
 func (v *Variable) String() string {
 	var dataType string
 	switch v.DataType {
-	case core.FactorDataType:
+	case db.Factor:
 		dataType = "FACTOR"
-	case core.StringDataType:
+	case db.String:
 		dataType = "STRING"
-	case core.IntegerDataType:
+	case db.Integer:
 		dataType = "INTEGER"
-	case core.FloatDataType:
+	case db.Float:
 		dataType = "FLOAT"
-	case core.BooleanDataType:
+	case db.Boolean:
 		dataType = "BOOLEAN"
 	}
 

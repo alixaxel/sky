@@ -2,10 +2,11 @@ package query
 
 import (
 	"bytes"
-	"github.com/skydb/sky/core"
 	"io/ioutil"
 	"os"
 	"testing"
+
+	"github.com/skydb/sky/db"
 )
 
 // Ensure that we can encode queries.
@@ -14,30 +15,34 @@ func TestQueryEncodeDecode(t *testing.T) {
 	table.Open()
 	defer table.Close()
 
-	json := `{"prefix":"","statements":[{"expression":"@baz == \"hello\"","statements":[{"dimensions":[],"fields":[{"aggregation":"sum","distinct":false,"expression":"@x","name":"myValue"}],"name":"xyz","type":"selection"}],"type":"condition","within":[0,2],"withinUnits":"steps"},{"dimensions":["@foo","@bar"],"fields":[{"aggregation":"count","distinct":false,"name":"count"}],"name":"","type":"selection"}]}` + "\n"
+	table.Update(func(tx *db.Tx) error {
+		json := `{"prefix":"","statements":[{"expression":"@baz == \"hello\"","statements":[{"dimensions":[],"fields":[{"aggregation":"sum","distinct":false,"expression":"@x","name":"myValue"}],"name":"xyz","type":"selection"}],"type":"condition","within":[0,2],"withinUnits":"steps"},{"dimensions":["@foo","@bar"],"fields":[{"aggregation":"count","distinct":false,"name":"count"}],"name":"","type":"selection"}]}` + "\n"
 
-	// Decode
-	q := NewQuery()
-	q.SetTable(table)
-	buffer := bytes.NewBufferString(json)
-	err := q.Decode(buffer)
-	if err != nil {
-		t.Fatalf("Query decoding error: %v", err)
-	}
+		// Decode
+		q := NewQuery()
+		q.Tx = tx
+		buffer := bytes.NewBufferString(json)
+		err := q.Decode(buffer)
+		if err != nil {
+			t.Fatalf("Query decoding error: %v", err)
+		}
 
-	// Encode
-	buffer = new(bytes.Buffer)
-	q.Encode(buffer)
-	if buffer.String() != json {
-		t.Fatalf("Query encoding error:\nexp: %s\ngot: %s", json, buffer.String())
-	}
+		// Encode
+		buffer = new(bytes.Buffer)
+		q.Encode(buffer)
+		if buffer.String() != json {
+			t.Fatalf("Query encoding error:\nexp: %s\ngot: %s", json, buffer.String())
+		}
+
+		return nil
+	})
 }
 
-func createTempTable(t *testing.T) *core.Table {
+func createTempTable(t *testing.T) *db.Table {
 	path, err := ioutil.TempDir("", "")
 	os.RemoveAll(path)
 
-	table := core.NewTable("test", path)
+	table := db.NewTable("test", path)
 	err = table.Create()
 	if err != nil {
 		t.Fatalf("Unable to create table: %v", err)
