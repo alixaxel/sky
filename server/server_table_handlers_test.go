@@ -48,6 +48,33 @@ func TestServerCreateTable(t *testing.T) {
 	})
 }
 
+// Ensure that we can create a new table through the server.
+func TestServerCreateTableWithProperties(t *testing.T) {
+	runTestServer(func(s *Server) {
+		properties := `{"id":-3,"name":"location_country","transient":true,"dataType":"factor"},` +
+			`{"id":-2,"name":"referrer_host","transient":true,"dataType":"string"},` +
+			`{"id":-1,"name":"referrer_source","transient":true,"dataType":"factor"},` +
+			`{"id":1,"name":"session_token","transient":false,"dataType":"string"},` +
+			`{"id":2,"name":"shop_id","transient":false,"dataType":"integer"}`
+		definition := fmt.Sprintf(`{"name":"foo", "properties": [%s]}`, properties)
+		resp, err := sendTestHttpRequest("POST", "http://localhost:8586/tables", "application/json", definition)
+		if err != nil {
+			t.Fatalf("Unable to create table: %v", err)
+		}
+		assertResponse(t, resp, 200, `{"name":"foo"}`+"\n", "POST /tables failed.")
+		if _, err := os.Stat(fmt.Sprintf("%v/foo", s.Path())); os.IsNotExist(err) {
+			t.Fatalf("POST /tables did not create table.")
+		}
+		resp, err = sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/properties", "application/json", "")
+		expected := `{"id":-3,"name":"referrer_source","transient":true,"dataType":"factor"},` +
+			`{"id":-2,"name":"referrer_host","transient":true,"dataType":"string"},` +
+			`{"id":-1,"name":"location_country","transient":true,"dataType":"factor"},` +
+			`{"id":1,"name":"session_token","transient":false,"dataType":"string"},` +
+			`{"id":2,"name":"shop_id","transient":false,"dataType":"integer"}`
+		assertResponse(t, resp, 200, "["+expected+"]\n", "POST /tables failed.")
+	})
+}
+
 // Ensure that we can delete a table through the server.
 func TestServerDeleteTable(t *testing.T) {
 	runTestServer(func(s *Server) {
