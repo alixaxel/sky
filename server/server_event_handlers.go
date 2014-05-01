@@ -207,10 +207,10 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 				errors <- err
 				return
 			}
-			elapsed := time.Since(start).Seconds
+			elapsed := time.Since(start).Seconds()
 			count := batch.Count()
 			eventsWritten += count
-			s.logger.Printf("[STREAM][FLUSH] table=`%s`, count=`%d`, duration=`%f`", tableName, count, elapsed)
+			s.logger.Printf("[STREAM][FLUSH] client=`%s`, table=`%s`, count=`%d`, duration=`%f`", req.RemoteAddr, tableName, count, elapsed)
 		}
 		// signal finishing successfully
 		close(errors)
@@ -285,7 +285,7 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 
 	fmt.Fprintf(w, `{"events_written":%v}`, eventsWritten)
 
-	s.logger.Printf("[STREAM][CLOSE] table=`%s` count=`%d` duration=`%0.3f`", tableName, eventsWritten, time.Since(t0).Seconds())
+	s.logger.Printf("[STREAM][CLOSE] client=`%s`, table=`%s`, count=`%d`, duration=`%0.3f`", req.RemoteAddr, tableName, eventsWritten, time.Since(t0).Seconds())
 }
 
 type eventMessage struct {
