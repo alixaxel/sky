@@ -66,7 +66,11 @@ func main() {
 	}
 
 	// Hardcore parallelism right here.
-	runtime.GOMAXPROCS(int(config.Parallelism))
+	if p := int(config.Parallelism); p == 0 {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	} else {
+		runtime.GOMAXPROCS(p)
+	}
 
 	// Initialize
 	s := server.NewServer(config.Port, config.DataPath)
