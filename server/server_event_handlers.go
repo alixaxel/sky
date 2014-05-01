@@ -169,11 +169,10 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 	decodeStop := make(chan struct{})                          // signal the decoder to stop (by closing the channel)
 	go func(source io.Reader, events chan<- *eventMessage, errors chan<- error, stop <-chan struct{}) {
 		decoder := json.NewDecoder(source)
-	loop:
 		for {
 			select {
 			case <-stop:
-				break loop
+				return
 			default:
 				event := &eventMessage{}
 				err := decoder.Decode(&event)
@@ -181,10 +180,10 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 				case err == io.EOF:
 					// signal end of event stream
 					close(events)
-					break loop
+					return
 				case err != nil:
 					errors <- fmt.Errorf("Malformed json event: %v", err)
-					break loop
+					return
 				default:
 					events <- event
 				}
