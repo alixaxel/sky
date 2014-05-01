@@ -2,6 +2,7 @@ package server
 
 import (
 	"errors"
+	"fmt"
 	"net/http"
 	"sort"
 
@@ -64,6 +65,42 @@ func (s *Server) createTableHandler(w http.ResponseWriter, req *http.Request, pa
 	if err != nil {
 		return nil, err
 	}
+
+	// Create properties if present
+	if properties, ok := params["properties"].([]interface{}); ok {
+		table, err := s.OpenTable(name)
+		if err != nil {
+			return nil, err
+		}
+		err = table.Update(func(tx *db.Tx) error {
+			for _, p := range properties {
+				property, ok := p.(map[string]interface{})
+				if !ok {
+					return errors.New("Table property is not a valid map")
+				}
+				name, ok := property["name"].(string)
+				if !ok {
+					return errors.New("Table property name is not a string")
+				}
+				transient, ok := property["transient"].(bool)
+				if !ok {
+					return errors.New(fmt.Sprintf("Table property %s: transient is not a bool", name))
+				}
+				dataType, ok := property["dataType"].(string)
+				if !ok {
+					return errors.New(fmt.Sprintf("Table property %s: dataType is not a string", name))
+				}
+				if _, err := tx.CreateProperty(name, dataType, transient); err != nil {
+					return err
+				}
+			}
+			return nil
+		})
+		if err != nil {
+			return nil, err
+		}
+	}
+
 	return &tableMessage{table.Name()}, nil
 }
 

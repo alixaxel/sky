@@ -15,8 +15,9 @@ const (
 	DefaultPort                 = 8585
 	DefaultDataPath             = "/var/lib/sky"
 	DefaultPidPath              = "/var/run/skyd.pid"
-	DefaultStreamFlushPeriod    = 60  // seconds
+	DefaultStreamFlushPeriod    = 60 // seconds
 	DefaultStreamFlushThreshold = 1000
+	DefaultParallelism          = 0 // zero means set it to number of CPUs
 )
 
 //------------------------------------------------------------------------------
@@ -32,6 +33,7 @@ type Config struct {
 	PidPath              string `toml:"pid-path"`
 	StreamFlushPeriod    uint   `toml:"stream-flush-period"`
 	StreamFlushThreshold uint   `toml:"stream-flush-threshold"`
+	Parallelism          uint   `toml:"parallelism"`
 }
 
 //------------------------------------------------------------------------------
@@ -48,6 +50,7 @@ func NewConfig() *Config {
 		PidPath:              DefaultPidPath,
 		StreamFlushPeriod:    DefaultStreamFlushPeriod,
 		StreamFlushThreshold: DefaultStreamFlushThreshold,
+		Parallelism:          DefaultParallelism,
 	}
 }
 

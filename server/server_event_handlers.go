@@ -140,8 +140,9 @@ func (s *Server) flushTableEvents(table *db.Table, objects objectEvents) error {
 func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	t0 := time.Now()
+	tableName := vars["name"]
 
-	table, err := s.OpenTable(vars["name"])
+	table, err := s.OpenTable(tableName)
 	if err != nil {
 		s.logger.Printf("ERR %v", err)
 		w.WriteHeader(http.StatusNotFound)
@@ -162,92 +163,117 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		}
 	}
 
-	eventsByObject := make(objectEvents)
-	flushEventCount := uint(0)
-
-	eventsWritten := 0
-	err = func() error {
-		// Stream in JSON event objects.
-		decoder := json.NewDecoder(req.Body)
-
-		// Set up events decoder listener
-		events := make(chan *eventMessage)
-		eventErrors := make(chan error)
-		go func(decoder *json.Decoder) {
-			for {
+	// GOROUTINE for event decoding
+	decodeEvents := make(chan *eventMessage, 2*flushThreshold) // decoded events
+	decodeErrors := make(chan error)                           // decoding errors
+	decodeStop := make(chan struct{})                          // signal the decoder to stop (by closing the channel)
+	go func(source io.Reader, events chan<- *eventMessage, errors chan<- error, stop <-chan struct{}) {
+		decoder := json.NewDecoder(source)
+		for {
+			select {
+			case <-stop:
+				return
+			default:
 				event := &eventMessage{}
-				if err := decoder.Decode(&event); err == io.EOF {
+				err := decoder.Decode(&event)
+				switch {
+				case err == io.EOF:
+					// signal end of event stream
 					close(events)
-					break
-				} else if err != nil {
-					eventErrors <- fmt.Errorf("Malformed json event: %v", err)
-					break
+					return
+				case err != nil:
+					errors <- fmt.Errorf("Malformed json event: %v", err)
+					return
+				default:
+					events <- event
 				}
-				events <- event
 			}
-		}(decoder)
+		}
+	}(req.Body, decodeEvents, decodeErrors, decodeStop)
 
+	// total events successfully written
+	// note that the count is updated by the flushing goroutine only!
+	// any read access must wait until that goroutine finishes
+	eventsWritten := 0
+
+	// GOROUTINE for event flushing
+	writeEvents := make(chan objectEvents, 1000)
+	writeErrors := make(chan error)
+	go func(events <-chan objectEvents, errors chan<- error) {
+		for batch := range events {
+			start := time.Now()
+			if err := s.flushTableEvents(table, batch); err != nil {
+				errors <- err
+				return
+			}
+			elapsed := time.Since(start).Seconds()
+			count := batch.Count()
+			eventsWritten += count
+			s.logger.Printf("[STREAM][FLUSH] client=`%s`, table=`%s`, count=`%d`, duration=`%f`", req.RemoteAddr, tableName, count, elapsed)
+		}
+		// signal finishing successfully
+		close(errors)
+	}(writeEvents, writeErrors)
+
+	eventsByObject := make(objectEvents)
+
+	// Main loop receives decoded events,
+	// deserializes, factorizes and batches them for writing
+	err = func() error {
+		var err error
+		var flushEventCount uint
 	loop:
 		for {
-
-			// Read in a JSON object.
-			var msg *eventMessage
+			var event *eventMessage
 			select {
-			case e, ok := <-events:
-				if !ok {
-					break loop
+			case e, ok := <-decodeEvents:
+				if ok {
+					event = e
 				} else {
-					msg = e
+					break loop
 				}
-
-			case err := <-eventErrors:
-				return err
+			case err = <-decodeErrors:
+				break loop
+			case err = <-writeErrors:
+				// make sure we stop the decoder
+				close(decodeStop)
+				return err // skip flushing remaining events
 			}
 
 			// Extract the object identifier.
-			var objectId = msg.ID
+			var objectId = event.ID
 			if objectId == "" {
-				return fmt.Errorf("Object identifier required")
+				err = fmt.Errorf("Object identifier required")
+				break loop
 			}
 
-			// Add event to table buffer.
-			eventsByObject[objectId] = append(eventsByObject[objectId], &db.Event{Timestamp: msg.Timestamp, Data: msg.Data})
+			// Add event to the batch.
+			eventsByObject[objectId] = append(eventsByObject[objectId], &db.Event{Timestamp: event.Timestamp, Data: event.Data})
 			flushEventCount++
 
 			// Flush events if exceeding threshold.
 			if flushEventCount >= flushThreshold {
-				flushedCount := 0
-				s.logger.Printf("[STREAM] [FLUSH THRESHOLD] [FLUSHING] threshold=`%d` events=`%d`", flushThreshold, flushEventCount)
-				if err := s.flushTableEvents(table, eventsByObject); err != nil {
-					return err
-				}
-				eventsWritten += eventsByObject.Count()
-				flushedCount += eventsByObject.Count()
-				s.logger.Printf("[STREAM] [FLUSH THRESHOLD] [FLUSHED] events=`%d`", flushedCount)
-
+				writeEvents <- eventsByObject
 				eventsByObject = make(objectEvents)
 				flushEventCount = 0
 			}
-
 		}
-
-		return nil
+		// make sure we stop the decoder
+		close(decodeStop)
+		// Flush remaining events
+		if len(eventsByObject) > 0 {
+			writeEvents <- eventsByObject
+		}
+		close(writeEvents)
+		// Wait for flushing to finish.
+		// If the flush fails, report that error instead of any other,
+		// because flush failures involve an event that was successfully decoded,
+		// thus logically preceeding any decode/deserialize error
+		if err2 := <-writeErrors; err != nil {
+			err = err2
+		}
+		return err
 	}()
-
-	// Flush all events before closing the stream.
-	if err == nil {
-		err = func() error {
-			flushedCount := 0
-			s.logger.Printf("[STREAM] [END FLUSH] [FLUSHING] events=`%d`")
-			if err := s.flushTableEvents(table, eventsByObject); err != nil {
-				return err
-			}
-			eventsWritten += eventsByObject.Count()
-			flushedCount += eventsByObject.Count()
-			s.logger.Printf("[STREAM] [END FLUSH] [FLUSHED] events=`%d`", flushedCount)
-			return nil
-		}()
-	}
 
 	if err != nil {
 		s.logger.Printf("ERR %v", err)
@@ -258,7 +284,7 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 
 	fmt.Fprintf(w, `{"events_written":%v}`, eventsWritten)
 
-	s.logger.Printf("%s \"%s %s %s %d events OK\" %0.3f", req.RemoteAddr, req.Method, req.URL.Path, req.Proto, eventsWritten, time.Since(t0).Seconds())
+	s.logger.Printf("[STREAM][CLOSE] client=`%s`, table=`%s`, count=`%d`, duration=`%0.3f`", req.RemoteAddr, tableName, eventsWritten, time.Since(t0).Seconds())
 }
 
 type eventMessage struct {

@@ -42,6 +42,7 @@ func init() {
 	flag.StringVar(&configPath, "config", "", "the path to the config file")
 	flag.UintVar(&config.StreamFlushPeriod, "stream-flush-period", config.StreamFlushPeriod, "time period on which to flush streamed events")
 	flag.UintVar(&config.StreamFlushThreshold, "stream-flush-threshold", config.StreamFlushThreshold, "the maximum number of events (per table) in event stream before flush")
+	flag.UintVar(&config.Parallelism, "parallelism", config.Parallelism, "the number of cores to use, ie gomaxprocs")
 }
 
 //--------------------------------------
@@ -65,7 +66,11 @@ func main() {
 	}
 
 	// Hardcore parallelism right here.
-	runtime.GOMAXPROCS(runtime.NumCPU())
+	if p := int(config.Parallelism); p == 0 {
+		runtime.GOMAXPROCS(runtime.NumCPU())
+	} else {
+		runtime.GOMAXPROCS(p)
+	}
 
 	// Initialize
 	s := server.NewServer(config.Port, config.DataPath)
