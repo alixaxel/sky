@@ -140,8 +140,9 @@ func (s *Server) flushTableEvents(table *db.Table, objects objectEvents) error {
 func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Request) {
 	vars := mux.Vars(req)
 	t0 := time.Now()
+	tableName := vars["name"]
 
-	table, err := s.OpenTable(vars["name"])
+	table, err := s.OpenTable(tableName)
 	if err != nil {
 		s.logger.Printf("ERR %v", err)
 		w.WriteHeader(http.StatusNotFound)
@@ -178,6 +179,7 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 				err := decoder.Decode(&event)
 				switch {
 				case err == io.EOF:
+					// signal end of event stream
 					close(events)
 					break loop
 				case err != nil:
@@ -200,14 +202,15 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 	writeErrors := make(chan error)
 	go func(events <-chan objectEvents, errors chan<- error) {
 		for batch := range events {
+			start := time.Now()
 			if err := s.flushTableEvents(table, batch); err != nil {
 				errors <- err
 				return
 			}
+			elapsed := time.Since(start).Seconds
 			count := batch.Count()
 			eventsWritten += count
-			s.logger.Printf("[STREAM] [FLUSHED] events=`%d`", count)
-
+			s.logger.Printf("[STREAM][FLUSH] table=`%s`, count=`%d`, duration=`%f`", tableName, count, elapsed)
 		}
 		// signal finishing successfully
 		close(errors)
@@ -282,7 +285,7 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 
 	fmt.Fprintf(w, `{"events_written":%v}`, eventsWritten)
 
-	s.logger.Printf("%s \"%s %s %s %d events OK\" %0.3f", req.RemoteAddr, req.Method, req.URL.Path, req.Proto, eventsWritten, time.Since(t0).Seconds())
+	s.logger.Printf("[STREAM][CLOSE] table=`%s` count=`%d` duration=`%0.3f`", tableName, eventsWritten, time.Since(t0).Seconds())
 }
 
 type eventMessage struct {
