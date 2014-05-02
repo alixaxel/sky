@@ -90,7 +90,6 @@ func NewServer(config *Config) *Server {
 	// Set up New Relic agent if we have a license key
 	if nrKey := config.NewRelicKey; nrKey != "" {
 		agent := gorelic.NewAgent()
-		agent.Verbose = true
 		agent.NewrelicLicense = nrKey
 		hn, err := os.Hostname()
 		if err == nil {
