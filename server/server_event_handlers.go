@@ -34,7 +34,11 @@ func (s *Server) addEventHandlers() {
 	}).Methods("DELETE")
 
 	// Streaming import.
-	s.router.HandleFunc("/tables/{name}/events", s.streamUpdateEventsHandler).Methods("PATCH")
+	handler := s.streamUpdateEventsHandler
+	if s.newRelicAgent != nil {
+		handler = s.newRelicAgent.WrapHTTPHandlerFunc(s.streamUpdateEventsHandler)
+	}
+	s.router.HandleFunc("/tables/{name}/events", handler).Methods("PATCH")
 }
 
 // GET /tables/:name/objects/:objectId/events
