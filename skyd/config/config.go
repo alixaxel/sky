@@ -34,6 +34,7 @@ type Config struct {
 	StreamFlushPeriod    uint   `toml:"stream-flush-period"`
 	StreamFlushThreshold uint   `toml:"stream-flush-threshold"`
 	Parallelism          uint   `toml:"parallelism"`
+	NewRelicKey          string `toml:"newrelic-key"`
 }
 
 //------------------------------------------------------------------------------

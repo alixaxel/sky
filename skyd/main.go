@@ -9,9 +9,11 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/davecheney/profile"
 	"github.com/skydb/sky/server"
 	. "github.com/skydb/sky/skyd/config"
+
+	"github.com/davecheney/profile"
+	"github.com/yvasiyarov/gorelic"
 )
 
 //------------------------------------------------------------------------------
@@ -43,6 +45,7 @@ func init() {
 	flag.UintVar(&config.StreamFlushPeriod, "stream-flush-period", config.StreamFlushPeriod, "time period on which to flush streamed events")
 	flag.UintVar(&config.StreamFlushThreshold, "stream-flush-threshold", config.StreamFlushThreshold, "the maximum number of events (per table) in event stream before flush")
 	flag.UintVar(&config.Parallelism, "parallelism", config.Parallelism, "the number of cores to use, ie gomaxprocs")
+	flag.StringVar(&configPath, "newrelic-key", "", "New Relic license key")
 }
 
 //--------------------------------------
@@ -70,6 +73,14 @@ func main() {
 		runtime.GOMAXPROCS(runtime.NumCPU())
 	} else {
 		runtime.GOMAXPROCS(p)
+	}
+
+	// Activate New Relic monitoring if the key is present
+	if nrKey := config.NewRelicKey; nrKey != "" {
+		agent := gorelic.NewAgent()
+		agent.Verbose = true
+		agent.NewrelicLicense = nrKey
+		agent.Run()
 	}
 
 	// Initialize
