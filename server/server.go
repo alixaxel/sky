@@ -46,8 +46,7 @@ type Server struct {
 	shutdownChannel      chan bool
 	shutdownFinished     chan bool
 	mutex                sync.Mutex
-	StreamFlushPeriod    uint
-	StreamFlushThreshold uint
+	streamFlushThreshold uint
 	newRelicAgent        *gorelic.Agent
 }
 
@@ -85,8 +84,7 @@ func NewServer(config *Config) *Server {
 		logger:               log.New(os.Stdout, "", log.LstdFlags),
 		path:                 config.DataPath,
 		tables:               make(map[string]*db.Table),
-		StreamFlushPeriod:    config.StreamFlushPeriod,
-		StreamFlushThreshold: config.StreamFlushThreshold,
+		streamFlushThreshold: config.StreamFlushThreshold,
 	}
 
 	// Set up New Relic agent if we have a license key

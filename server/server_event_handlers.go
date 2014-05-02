@@ -151,7 +151,7 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Check for flush threshold/buffer passed as URL params.
-	flushThreshold := s.StreamFlushThreshold
+	flushThreshold := s.streamFlushThreshold
 	if rawFlushThreshold := req.FormValue("flush-threshold"); rawFlushThreshold != "" {
 		threshold, err := strconv.Atoi(rawFlushThreshold)
 		if err == nil {

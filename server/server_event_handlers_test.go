@@ -105,7 +105,7 @@ func TestServerStreamUpdateEventsFlushesOnThreshold(t *testing.T) {
 		setupTestTable("foo")
 		setupTestProperty("foo", "bar", false, "string")
 		setupTestProperty("foo", "baz", true, "integer")
-		s.StreamFlushThreshold = 2
+		s.streamFlushThreshold = 2
 		client, err := NewStreamingClient(t, "http://localhost:8586/tables/foo/events")
 		assert.NoError(t, err)
 
