@@ -19,6 +19,8 @@ import (
 	"github.com/skydb/sky"
 	"github.com/skydb/sky/db"
 	"github.com/skydb/sky/query"
+	. "github.com/skydb/sky/skyd/config"
+	"github.com/yvasiyarov/gorelic"
 )
 
 // The number of servlets created on startup defaults to the number
@@ -44,8 +46,8 @@ type Server struct {
 	shutdownChannel      chan bool
 	shutdownFinished     chan bool
 	mutex                sync.Mutex
-	StreamFlushPeriod    uint
-	StreamFlushThreshold uint
+	streamFlushThreshold uint
+	newRelicAgent        *gorelic.Agent
 }
 
 //------------------------------------------------------------------------------
@@ -74,16 +76,28 @@ func (e *TextPlainContentTypeError) Error() string {
 //------------------------------------------------------------------------------
 
 // NewServer returns a new Server.
-func NewServer(port uint, path string) *Server {
+func NewServer(config *Config) *Server {
 	r := mux.NewRouter()
 	s := &Server{
-		httpServer:           &http.Server{Addr: fmt.Sprintf(":%d", port), Handler: r},
+		httpServer:           &http.Server{Addr: fmt.Sprintf(":%d", config.Port), Handler: r},
 		router:               r,
 		logger:               log.New(os.Stdout, "", log.LstdFlags),
-		path:                 path,
+		path:                 config.DataPath,
 		tables:               make(map[string]*db.Table),
-		StreamFlushPeriod:    60, // seconds
-		StreamFlushThreshold: 1000,
+		streamFlushThreshold: config.StreamFlushThreshold,
+	}
+
+	// Set up New Relic agent if we have a license key
+	if nrKey := config.NewRelicKey; nrKey != "" {
+		agent := gorelic.NewAgent()
+		agent.NewrelicLicense = nrKey
+		hn, err := os.Hostname()
+		if err == nil {
+			agent.NewrelicName = fmt.Sprintf("%s:%d", hn, config.Port)
+			s.newRelicAgent = agent
+		} else {
+			s.logger.Printf("New Relic agent setup error: %s\n", err)
+		}
 	}
 
 	s.addHandlers()
@@ -92,6 +106,11 @@ func NewServer(port uint, path string) *Server {
 	s.addEventHandlers()
 	s.addQueryHandlers()
 	s.addDebugHandlers()
+
+	// Activate New Relic monitoring if it is set up.
+	if s.newRelicAgent != nil {
+		s.newRelicAgent.Run()
+	}
 
 	return s
 }
@@ -283,6 +302,10 @@ func (s *Server) ApiHandleFunc(route string, handlerFunction func(http.ResponseW
 				return
 			}
 		}
+	}
+
+	if s.newRelicAgent != nil {
+		wrappedFunction = s.newRelicAgent.WrapHTTPHandlerFunc(wrappedFunction)
 	}
 
 	return s.router.HandleFunc(route, wrappedFunction)

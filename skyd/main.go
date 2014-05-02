@@ -9,9 +9,10 @@ import (
 	"runtime"
 	"syscall"
 
-	"github.com/davecheney/profile"
 	"github.com/skydb/sky/server"
 	. "github.com/skydb/sky/skyd/config"
+
+	"github.com/davecheney/profile"
 )
 
 //------------------------------------------------------------------------------
@@ -40,9 +41,9 @@ func init() {
 	flag.StringVar(&config.DataPath, "data-path", config.DataPath, "the data directory")
 	flag.StringVar(&config.PidPath, "pid-path", config.PidPath, "the path to the pid file")
 	flag.StringVar(&configPath, "config", "", "the path to the config file")
-	flag.UintVar(&config.StreamFlushPeriod, "stream-flush-period", config.StreamFlushPeriod, "time period on which to flush streamed events")
 	flag.UintVar(&config.StreamFlushThreshold, "stream-flush-threshold", config.StreamFlushThreshold, "the maximum number of events (per table) in event stream before flush")
 	flag.UintVar(&config.Parallelism, "parallelism", config.Parallelism, "the number of cores to use, ie gomaxprocs")
+	flag.StringVar(&config.NewRelicKey, "newrelic-key", "", "New Relic license key")
 }
 
 //--------------------------------------
@@ -73,9 +74,7 @@ func main() {
 	}
 
 	// Initialize
-	s := server.NewServer(config.Port, config.DataPath)
-	s.StreamFlushPeriod = config.StreamFlushPeriod
-	s.StreamFlushThreshold = config.StreamFlushThreshold
+	s := server.NewServer(config)
 	writePidFile()
 	// setupSignalHandlers(s)
 	go handleProfileSignal()

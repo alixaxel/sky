@@ -34,7 +34,11 @@ func (s *Server) addEventHandlers() {
 	}).Methods("DELETE")
 
 	// Streaming import.
-	s.router.HandleFunc("/tables/{name}/events", s.streamUpdateEventsHandler).Methods("PATCH")
+	handler := s.streamUpdateEventsHandler
+	if s.newRelicAgent != nil {
+		handler = s.newRelicAgent.WrapHTTPHandlerFunc(s.streamUpdateEventsHandler)
+	}
+	s.router.HandleFunc("/tables/{name}/events", handler).Methods("PATCH")
 }
 
 // GET /tables/:name/objects/:objectId/events
@@ -151,7 +155,7 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 	}
 
 	// Check for flush threshold/buffer passed as URL params.
-	flushThreshold := s.StreamFlushThreshold
+	flushThreshold := s.streamFlushThreshold
 	if rawFlushThreshold := req.FormValue("flush-threshold"); rawFlushThreshold != "" {
 		threshold, err := strconv.Atoi(rawFlushThreshold)
 		if err == nil {
