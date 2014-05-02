@@ -2,6 +2,7 @@ package server
 
 import (
 	"fmt"
+	. "github.com/skydb/sky/skyd/config"
 	"github.com/stretchr/testify/assert"
 	"io"
 	"io/ioutil"
@@ -28,7 +29,10 @@ func sendTestHttpRequest(method string, url string, contentType string, body str
 }
 
 func runTestServerAt(path string, f func(s *Server)) {
-	server := NewServer(8586, path)
+	config := NewConfig()
+	config.Port = 8586
+	config.DataPath = path
+	server := NewServer(config)
 	server.Silence()
 	server.ListenAndServe(nil)
 	defer server.Shutdown()

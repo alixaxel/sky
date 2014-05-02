@@ -13,7 +13,6 @@ import (
 	. "github.com/skydb/sky/skyd/config"
 
 	"github.com/davecheney/profile"
-	"github.com/yvasiyarov/gorelic"
 )
 
 //------------------------------------------------------------------------------
@@ -75,19 +74,8 @@ func main() {
 		runtime.GOMAXPROCS(p)
 	}
 
-	// Activate New Relic monitoring if the key is present
-	if nrKey := config.NewRelicKey; nrKey != "" {
-		agent := gorelic.NewAgent()
-		agent.Verbose = true
-		agent.NewrelicLicense = nrKey
-		agent.NewrelicName = "skydb"
-		agent.Run()
-	}
-
 	// Initialize
-	s := server.NewServer(config.Port, config.DataPath)
-	s.StreamFlushPeriod = config.StreamFlushPeriod
-	s.StreamFlushThreshold = config.StreamFlushThreshold
+	s := server.NewServer(config)
 	writePidFile()
 	// setupSignalHandlers(s)
 	go handleProfileSignal()
