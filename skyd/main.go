@@ -80,6 +80,7 @@ func main() {
 		agent := gorelic.NewAgent()
 		agent.Verbose = true
 		agent.NewrelicLicense = nrKey
+		agent.NewrelicName = "skydb"
 		agent.Run()
 	}
 
