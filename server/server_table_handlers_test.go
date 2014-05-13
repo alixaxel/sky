@@ -135,6 +135,6 @@ func TestServerTableStats(t *testing.T) {
 		})
 
 		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/stats", "application/json", "")
-		assertResponse(t, resp, 200, `{"branchAlloc":0,"branchInuse":0,"branchOverflow":0,"branchPages":0,"buckets":18,"depth":2,"inlineBucketInuse":474,"inlineBuckets":17,"key":3,"leafAlloc":4096,"leafInuse":117,"leafOverflow":0,"leafPages":1}`+"\n", "GET /tables/:name/stats failed.")
+		assertResponse(t, resp, 200, `{"branchPages":0,"branchOverflow":0,"leafPages":1,"leafOverflow":0,"keyCount":3,"depth":2,"branchAlloc":0,"branchInuse":0,"leafAlloc":4096,"leafInuse":117,"buckets":18,"inlineBuckets":17,"inlineBucketInuse":474}`+"\n", "GET /tables/:name/stats failed.")
 	})
 }

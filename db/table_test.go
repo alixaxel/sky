@@ -702,14 +702,14 @@ func TestTableStats(t *testing.T) {
 		tableStats, err := table.Stats()
 		assert.NoError(t, err)
 
-		assert.Equal(t, tableStats["key"], 3)
-		assert.Equal(t, tableStats["leafPages"], 1)
-		assert.Equal(t, tableStats["depth"], 2)
-		assert.Equal(t, tableStats["leafAlloc"], 4096)
-		assert.Equal(t, tableStats["leafInuse"], 120)
-		assert.Equal(t, tableStats["buckets"], 18)
-		assert.Equal(t, tableStats["inlineBuckets"], 17)
-		assert.Equal(t, tableStats["inlineBucketInuse"], 473)
+		assert.Equal(t, tableStats.KeyCount, 3)
+		assert.Equal(t, tableStats.LeafPages, 1)
+		assert.Equal(t, tableStats.Depth, 2)
+		assert.Equal(t, tableStats.LeafAllocated, 4096)
+		assert.Equal(t, tableStats.LeafInUse, 120)
+		assert.Equal(t, tableStats.Buckets, 18)
+		assert.Equal(t, tableStats.InlineBuckets, 17)
+		assert.Equal(t, tableStats.InlineBucketInUse, 473)
 	})
 }
 

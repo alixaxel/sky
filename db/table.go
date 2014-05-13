@@ -16,34 +16,9 @@ import (
 	"github.com/ugorji/go/codec"
 )
 
-const (
-	// FactorCacheSize is the number of factors that are stored in the LRU cache.
-	// This cache size is per-property.
-	FactorCacheSize = 1000
-
-	// Stats Map Keys
-
-	// Page count statistics
-	LogicalBranchPages     = "branchPages"
-	PhysicalBranchOverflow = "branchOverflow"
-	LogicalLeafPages       = "leafPages"
-	PhysicalLeafOverflow   = "leafOverflow"
-
-	// Tree statistics
-	KeyValuePairs = "key"
-	BTreeLevels   = "depth"
-
-	// Page size utilization
-	BranchAllocated = "branchAlloc"
-	BranchInUse     = "branchInuse"
-	LeafAllocated   = "leafAlloc"
-	LeafInUse       = "leafInuse"
-
-	// Bucket statistics
-	Buckets           = "buckets"
-	InlineBuckets     = "inlineBuckets"
-	InlineBucketInUse = "inlineBucketInuse"
-)
+// FactorCacheSize is the number of factors that are stored in the LRU cache.
+// This cache size is per-property.
+const FactorCacheSize = 1000
 
 var (
 	// ErrObjectIDRequired is returned inserting, deleting, or retrieving
@@ -57,6 +32,30 @@ func NewTable(name, path string) *Table {
 		name: name,
 		path: path,
 	}
+}
+
+// Statistics about the table
+type TableStats struct {
+	// Page count statistics
+	BranchPages    int `json:"branchPages"`
+	BranchOverflow int `json:"branchOverflow"`
+	LeafPages      int `json:"leafPages"`
+	LeafOverflow   int `json:"leafOverflow"`
+
+	// Tree statistics
+	KeyCount int `json:"keyCount"`
+	Depth    int `json:"depth"`
+
+	// Page size utilization
+	BranchAllocated int `json:"branchAlloc"`
+	BranchInUse     int `json:"branchInuse"`
+	LeafAllocated   int `json:"leafAlloc"`
+	LeafInUse       int `json:"leafInuse"`
+
+	// Bucket statistics
+	Buckets           int `json:"buckets"`
+	InlineBuckets     int `json:"inlineBuckets"`
+	InlineBucketInUse int `json:"inlineBucketInuse"`
 }
 
 // Table represents a collection of objects.
@@ -78,8 +77,8 @@ type Table struct {
 
 // Gather stats from bolt and return the stats as a map so the internals of bolt.BucketStats
 // are not exposed to the caller
-func (t *Table) Stats() (map[string]int, error) {
-	statsMap := make(map[string]int)
+func (t *Table) Stats() (*TableStats, error) {
+	tableStats := new(TableStats)
 
 	err := t.db.View(func(tx *bolt.Tx) error {
 		var s bolt.BucketStats
@@ -88,19 +87,19 @@ func (t *Table) Stats() (map[string]int, error) {
 			return nil
 		})
 
-		statsMap[LogicalBranchPages] = s.BranchPageN
-		statsMap[PhysicalBranchOverflow] = s.BranchOverflowN
-		statsMap[LogicalLeafPages] = s.LeafPageN
-		statsMap[PhysicalLeafOverflow] = s.LeafOverflowN
-		statsMap[KeyValuePairs] = s.KeyN
-		statsMap[BTreeLevels] = s.Depth
-		statsMap[BranchAllocated] = s.BranchAlloc
-		statsMap[BranchInUse] = s.BranchInuse
-		statsMap[LeafAllocated] = s.LeafAlloc
-		statsMap[LeafInUse] = s.LeafInuse
-		statsMap[Buckets] = s.BucketN
-		statsMap[InlineBuckets] = s.InlineBucketN
-		statsMap[InlineBucketInUse] = s.InlineBucketInuse
+		tableStats.BranchPages = s.BranchPageN
+		tableStats.BranchOverflow = s.BranchOverflowN
+		tableStats.LeafPages = s.LeafPageN
+		tableStats.LeafOverflow = s.LeafOverflowN
+		tableStats.KeyCount = s.KeyN
+		tableStats.Depth = s.Depth
+		tableStats.BranchAllocated = s.BranchAlloc
+		tableStats.BranchInUse = s.BranchInuse
+		tableStats.LeafAllocated = s.LeafAlloc
+		tableStats.LeafInUse = s.LeafInuse
+		tableStats.Buckets = s.BucketN
+		tableStats.InlineBuckets = s.InlineBucketN
+		tableStats.InlineBucketInUse = s.InlineBucketInuse
 
 		return nil
 	})
@@ -109,7 +108,7 @@ func (t *Table) Stats() (map[string]int, error) {
 		return nil, err
 	}
 
-	return statsMap, nil
+	return tableStats, nil
 }
 
 // Name returns the name of the table.
