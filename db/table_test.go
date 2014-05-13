@@ -699,17 +699,17 @@ func TestTableStats(t *testing.T) {
 			return nil
 		})
 
-		tableStats, err := table.Stats()
+		stats, err := table.Stats()
 		assert.NoError(t, err)
 
-		assert.Equal(t, tableStats.KeyCount, 3)
-		assert.Equal(t, tableStats.LeafPages, 1)
-		assert.Equal(t, tableStats.Depth, 2)
-		assert.Equal(t, tableStats.LeafAllocated, 4096)
-		assert.Equal(t, tableStats.LeafInUse, 120)
-		assert.Equal(t, tableStats.Buckets, 18)
-		assert.Equal(t, tableStats.InlineBuckets, 17)
-		assert.Equal(t, tableStats.InlineBucketInUse, 473)
+		assert.Equal(t, stats.KeyCount, 3)
+		assert.Equal(t, stats.LeafPages, 1)
+		assert.Equal(t, stats.Depth, 2)
+		assert.Equal(t, stats.LeafAllocated, 4096)
+		assert.Equal(t, stats.LeafInUse, 120)
+		assert.Equal(t, stats.Buckets, 18)
+		assert.Equal(t, stats.InlineBuckets, 17)
+		assert.Equal(t, stats.InlineBucketInUse, 473)
 	})
 }
 

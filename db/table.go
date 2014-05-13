@@ -78,7 +78,7 @@ type Table struct {
 // Gather stats from bolt and return the stats as a map so the internals of bolt.BucketStats
 // are not exposed to the caller
 func (t *Table) Stats() (*TableStats, error) {
-	tableStats := new(TableStats)
+	stats := new(TableStats)
 
 	err := t.db.View(func(tx *bolt.Tx) error {
 		var s bolt.BucketStats
@@ -87,19 +87,19 @@ func (t *Table) Stats() (*TableStats, error) {
 			return nil
 		})
 
-		tableStats.BranchPages = s.BranchPageN
-		tableStats.BranchOverflow = s.BranchOverflowN
-		tableStats.LeafPages = s.LeafPageN
-		tableStats.LeafOverflow = s.LeafOverflowN
-		tableStats.KeyCount = s.KeyN
-		tableStats.Depth = s.Depth
-		tableStats.BranchAllocated = s.BranchAlloc
-		tableStats.BranchInUse = s.BranchInuse
-		tableStats.LeafAllocated = s.LeafAlloc
-		tableStats.LeafInUse = s.LeafInuse
-		tableStats.Buckets = s.BucketN
-		tableStats.InlineBuckets = s.InlineBucketN
-		tableStats.InlineBucketInUse = s.InlineBucketInuse
+		stats.BranchPages = s.BranchPageN
+		stats.BranchOverflow = s.BranchOverflowN
+		stats.LeafPages = s.LeafPageN
+		stats.LeafOverflow = s.LeafOverflowN
+		stats.KeyCount = s.KeyN
+		stats.Depth = s.Depth
+		stats.BranchAllocated = s.BranchAlloc
+		stats.BranchInUse = s.BranchInuse
+		stats.LeafAllocated = s.LeafAlloc
+		stats.LeafInUse = s.LeafInuse
+		stats.Buckets = s.BucketN
+		stats.InlineBuckets = s.InlineBucketN
+		stats.InlineBucketInUse = s.InlineBucketInuse
 
 		return nil
 	})
@@ -108,7 +108,7 @@ func (t *Table) Stats() (*TableStats, error) {
 		return nil, err
 	}
 
-	return tableStats, nil
+	return stats, nil
 }
 
 // Name returns the name of the table.
