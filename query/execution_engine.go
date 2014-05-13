@@ -36,6 +36,7 @@ int mp_unpack(lua_State *L);
 #define PAGE_META     0x04
 #define PAGE_FREELIST 0x10
 
+#define BUCKET_HEADER_SIZE 16
 
 //------------------------------------------------------------------------------
 // Typedefs
@@ -727,7 +728,7 @@ bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
     // and passing in a zero pgid.
     bucket *b = (bucket*)data->data;
     if (b->root == 0) {
-        bolt_cursor_init(&cursor->event_cursor, data->data+16, cursor->object_cursor.pgsz, 0);
+        bolt_cursor_init(&cursor->event_cursor, data->data+BUCKET_HEADER_SIZE, cursor->object_cursor.pgsz, 0);
     } else {
         bolt_cursor_init(&cursor->event_cursor, cursor->object_cursor.data, cursor->object_cursor.pgsz, b->root);
     }
