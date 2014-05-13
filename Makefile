@@ -1,4 +1,4 @@
-PACKAGES=core db query server skyd/config
+PACKAGES=db query server skyd/config
 PKGPATHS=$(patsubst %,github.com/skydb/sky/%,$(PACKAGES))
 GO=/usr/local/go/bin/go
 
