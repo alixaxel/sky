@@ -684,6 +684,35 @@ func TestTableFactorizeBeyondCache(t *testing.T) {
 	})
 }
 
+func TestTableStats(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		table, err := db.CreateTable("foo", 16)
+		assert.NoError(t, err)
+		table.Update(func(tx *Tx) error {
+			_, err := tx.CreateProperty("prop1", Integer, false)
+			assert.NoError(t, err)
+
+			tx.InsertEvents("user1", []*Event{
+				newEvent("2000-01-01T00:00:00Z", "prop1", 20),
+			})
+
+			return nil
+		})
+
+		tableStats, err := table.Stats()
+		assert.NoError(t, err)
+
+		assert.Equal(t, tableStats["key"], 3)
+		assert.Equal(t, tableStats["leafPages"], 1)
+		assert.Equal(t, tableStats["depth"], 2)
+		assert.Equal(t, tableStats["leafAlloc"], 4096)
+		assert.Equal(t, tableStats["leafInuse"], 120)
+		assert.Equal(t, tableStats["buckets"], 18)
+		assert.Equal(t, tableStats["inlineBuckets"], 17)
+		assert.Equal(t, tableStats["inlineBucketInuse"], 473)
+	})
+}
+
 func newEvent(timestamp string, pairs ...interface{}) *Event {
 	e := &Event{Timestamp: mustParseTime(timestamp), Data: make(map[string]interface{})}
 	for i := 0; i < len(pairs); i += 2 {

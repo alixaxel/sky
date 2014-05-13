@@ -16,9 +16,34 @@ import (
 	"github.com/ugorji/go/codec"
 )
 
-// FactorCacheSize is the number of factors that are stored in the LRU cache.
-// This cache size is per-property.
-const FactorCacheSize = 1000
+const (
+	// FactorCacheSize is the number of factors that are stored in the LRU cache.
+	// This cache size is per-property.
+	FactorCacheSize = 1000
+
+	// Stats Map Keys
+
+	// Page count statistics
+	LogicalBranchPages     = "branchPages"
+	PhysicalBranchOverflow = "branchOverflow"
+	LogicalLeafPages       = "leafPages"
+	PhysicalLeafOverflow   = "leafOverflow"
+
+	// Tree statistics
+	KeyValuePairs = "key"
+	BTreeLevels   = "depth"
+
+	// Page size utilization
+	BranchAllocated = "branchAlloc"
+	BranchInUse     = "branchInuse"
+	LeafAllocated   = "leafAlloc"
+	LeafInUse       = "leafInuse"
+
+	// Bucket statistics
+	Buckets           = "buckets"
+	InlineBuckets     = "inlineBuckets"
+	InlineBucketInUse = "inlineBucketInuse"
+)
 
 var (
 	// ErrObjectIDRequired is returned inserting, deleting, or retrieving
@@ -49,6 +74,42 @@ type Table struct {
 	shardCount     int
 	maxPermanentID int
 	maxTransientID int
+}
+
+// Gather stats from bolt and return the stats as a map so the internals of bolt.BucketStats
+// are not exposed to the caller
+func (t *Table) Stats() (map[string]int, error) {
+	statsMap := make(map[string]int)
+
+	err := t.db.View(func(tx *bolt.Tx) error {
+		var s bolt.BucketStats
+		tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+			s.Add(b.Stats())
+			return nil
+		})
+
+		statsMap[LogicalBranchPages] = s.BranchPageN
+		statsMap[PhysicalBranchOverflow] = s.BranchOverflowN
+		statsMap[LogicalLeafPages] = s.LeafPageN
+		statsMap[PhysicalLeafOverflow] = s.LeafOverflowN
+		statsMap[KeyValuePairs] = s.KeyN
+		statsMap[BTreeLevels] = s.Depth
+		statsMap[BranchAllocated] = s.BranchAlloc
+		statsMap[BranchInUse] = s.BranchInuse
+		statsMap[LeafAllocated] = s.LeafAlloc
+		statsMap[LeafInUse] = s.LeafInuse
+		statsMap[Buckets] = s.BucketN
+		statsMap[InlineBuckets] = s.InlineBucketN
+		statsMap[InlineBucketInUse] = s.InlineBucketInuse
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return statsMap, nil
 }
 
 // Name returns the name of the table.

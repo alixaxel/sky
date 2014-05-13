@@ -9,39 +9,12 @@ import (
 )
 
 func (s *Server) addQueryHandlers() {
-	s.ApiHandleFunc("/tables/{name}/stats", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
-		return s.statsHandler(w, req, params)
-	}).Methods("GET")
 	s.ApiHandleFunc("/tables/{name}/query", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.queryHandler(w, req, params)
 	}).Methods("POST")
 	s.ApiHandleFunc("/tables/{name}/query/codegen", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.queryCodegenHandler(w, req, params)
 	}).Methods("POST")
-}
-
-// GET /tables/:name/stats
-func (s *Server) statsHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
-	vars := mux.Vars(req)
-
-	// Return an error if the table already exists.
-	table, err := s.OpenTable(vars["name"])
-	if err != nil {
-		return nil, err
-	}
-
-	var results interface{}
-	err = table.View(func(tx *db.Tx) error {
-		// Run a simple count query.
-		q, _ := query.NewParser().ParseString("SELECT count() AS count")
-		q.Prefix = req.FormValue("prefix")
-		q.Tx = tx
-
-		var err error
-		results, err = s.RunQuery(tx, q)
-		return err
-	})
-	return results, err
 }
 
 // POST /tables/:name/query
