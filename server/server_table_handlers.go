@@ -26,6 +26,9 @@ func (s *Server) addTableHandlers() {
 	s.ApiHandleFunc("/tables/{name}/keys", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.tableKeysHandler(w, req, params)
 	}).Methods("GET")
+	s.ApiHandleFunc("/tables/{name}/stats", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
+		return s.statsHandler(w, req, params)
+	}).Methods("GET")
 }
 
 // GET /tables
@@ -132,6 +135,19 @@ func (s *Server) tableKeysHandler(w http.ResponseWriter, req *http.Request, para
 	sort.Strings(keys)
 
 	return keys, nil
+}
+
+// GET /tables/:name/stats
+func (s *Server) statsHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
+	vars := mux.Vars(req)
+
+	// Return an error if the table already exists.
+	table, err := s.OpenTable(vars["name"])
+	if err != nil {
+		return nil, err
+	}
+
+	return table.Stats()
 }
 
 type tableMessage struct {

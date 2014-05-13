@@ -34,6 +34,30 @@ func NewTable(name, path string) *Table {
 	}
 }
 
+// Statistics about the table
+type TableStats struct {
+	// Page count statistics
+	BranchPages    int `json:"branchPages"`
+	BranchOverflow int `json:"branchOverflow"`
+	LeafPages      int `json:"leafPages"`
+	LeafOverflow   int `json:"leafOverflow"`
+
+	// Tree statistics
+	KeyCount int `json:"keyCount"`
+	Depth    int `json:"depth"`
+
+	// Page size utilization
+	BranchAllocated int `json:"branchAlloc"`
+	BranchInUse     int `json:"branchInuse"`
+	LeafAllocated   int `json:"leafAlloc"`
+	LeafInUse       int `json:"leafInuse"`
+
+	// Bucket statistics
+	Buckets           int `json:"buckets"`
+	InlineBuckets     int `json:"inlineBuckets"`
+	InlineBucketInUse int `json:"inlineBucketInuse"`
+}
+
 // Table represents a collection of objects.
 type Table struct {
 	sync.Mutex
@@ -49,6 +73,42 @@ type Table struct {
 	shardCount     int
 	maxPermanentID int
 	maxTransientID int
+}
+
+// Gather stats from bolt and return the stats as a map so the internals of bolt.BucketStats
+// are not exposed to the caller
+func (t *Table) Stats() (*TableStats, error) {
+	stats := new(TableStats)
+
+	err := t.db.View(func(tx *bolt.Tx) error {
+		var s bolt.BucketStats
+		tx.ForEach(func(name []byte, b *bolt.Bucket) error {
+			s.Add(b.Stats())
+			return nil
+		})
+
+		stats.BranchPages = s.BranchPageN
+		stats.BranchOverflow = s.BranchOverflowN
+		stats.LeafPages = s.LeafPageN
+		stats.LeafOverflow = s.LeafOverflowN
+		stats.KeyCount = s.KeyN
+		stats.Depth = s.Depth
+		stats.BranchAllocated = s.BranchAlloc
+		stats.BranchInUse = s.BranchInuse
+		stats.LeafAllocated = s.LeafAlloc
+		stats.LeafInUse = s.LeafInuse
+		stats.Buckets = s.BucketN
+		stats.InlineBuckets = s.InlineBucketN
+		stats.InlineBucketInUse = s.InlineBucketInuse
+
+		return nil
+	})
+
+	if err != nil {
+		return nil, err
+	}
+
+	return stats, nil
 }
 
 // Name returns the name of the table.
