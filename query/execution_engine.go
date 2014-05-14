@@ -36,6 +36,7 @@ int mp_unpack(lua_State *L);
 #define PAGE_META     0x04
 #define PAGE_FREELIST 0x10
 
+#define BUCKET_HEADER_SIZE 16
 
 //------------------------------------------------------------------------------
 // Typedefs
@@ -708,7 +709,6 @@ void sky_cursor_set_property(sky_cursor *cursor, int64_t property_id,
 // Sets up object after cursor has already been positioned.
 bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
 {
-
     if(cursor->key_prefix != NULL && (key->size < cursor->key_prefix_sz || memcmp(cursor->key_prefix, key->data, cursor->key_prefix_sz) != 0)) {
         return false;
     }
@@ -721,8 +721,17 @@ bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
     memset(cursor->event, 0, cursor->event_sz);
 
     // Extract the bucket from the object cursor and init event cursor.
+    //
+    // NOTE: If this is an inline bucket then a single leaf page exists at the end
+    // of the bucket header in the data value. We'll trick the cursor by passing
+    // in the starting address of the page as the starting address of the DB
+    // and passing in a zero pgid.
     bucket *b = (bucket*)data->data;
-    bolt_cursor_init(&cursor->event_cursor, cursor->object_cursor.data, cursor->object_cursor.pgsz, b->root);
+    if (b->root == 0) {
+        bolt_cursor_init(&cursor->event_cursor, data->data+BUCKET_HEADER_SIZE, cursor->object_cursor.pgsz, 0);
+    } else {
+        bolt_cursor_init(&cursor->event_cursor, cursor->object_cursor.data, cursor->object_cursor.pgsz, b->root);
+    }
 
     // Read the first event into the cursor buffer.
     uint32_t flags;
@@ -743,6 +752,11 @@ bool sky_cursor_first_object(sky_cursor *cursor)
 {
     uint32_t flags;
     bolt_val key, data, seek;
+
+    // If there's no root on the object cursor then just exit.
+    if (cursor->object_cursor.root == 0) {
+        return false;
+    }
 
     if(cursor->key_prefix == NULL) {
         bolt_cursor_first(&cursor->object_cursor, &key, &data, &flags);

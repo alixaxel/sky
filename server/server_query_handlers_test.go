@@ -541,22 +541,3 @@ func TestServerDuplicateSelectionQuery(t *testing.T) {
 		assertResponse(t, resp, 200, `{"test":{"value":{"100":{"count":1}}},"value":{"100":{"count":2}}}`+"\n", "POST /tables/:name/query failed.")
 	})
 }
-
-// Ensure that we can run basic stats.
-func TestServerStatsQuery(t *testing.T) {
-	runTestServer(func(s *Server) {
-		setupTestTable("foo")
-		setupTestProperty("foo", "price", true, "integer")
-		setupTestData(t, "foo", [][]string{
-			[]string{"0", "1970-01-01T00:00:00Z", `{"data":{"price":1000}}`},
-			[]string{"0010a", "2012-01-01T00:00:00Z", `{"data":{"price":100}}`},
-			[]string{"0010b", "2012-01-01T00:00:00Z", `{"data":{"price":200}}`},
-			[]string{"0010b", "2012-01-01T00:00:01Z", `{"data":{"price":0}}`},
-			[]string{"0020a", "2012-01-01T00:00:00Z", `{"data":{"price":30}}`},
-			[]string{"0030a", "2012-01-01T00:00:00Z", `{"data":{"price":40}}`},
-		})
-
-		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/stats?prefix=001", "application/json", "")
-		assertResponse(t, resp, 200, `{"count":3}`+"\n", "POST /tables/:name/query failed.")
-	})
-}
