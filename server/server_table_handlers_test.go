@@ -125,16 +125,3 @@ func TestServerTableKeys(t *testing.T) {
 		assertResponse(t, resp, 200, `["a0","a1","a2","a3"]`+"\n", "POST /tables/:name/keys failed.")
 	})
 }
-
-func TestServerTableStats(t *testing.T) {
-	runTestServer(func(s *Server) {
-		setupTestTable("foo")
-		setupTestProperty("foo", "value", true, "integer")
-		setupTestData(t, "foo", [][]string{
-			[]string{"a0", "2012-01-01T00:00:00Z", `{"data":{"value":1}}`},
-		})
-
-		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/stats", "application/json", "")
-		assertResponse(t, resp, 200, `{"branchPages":0,"branchOverflow":0,"leafPages":1,"leafOverflow":0,"keyCount":3,"depth":2,"branchAlloc":0,"branchInuse":0,"leafAlloc":4096,"leafInuse":117,"buckets":18,"inlineBuckets":17,"inlineBucketInuse":474}`+"\n", "GET /tables/:name/stats failed.")
-	})
-}
