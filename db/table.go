@@ -176,6 +176,7 @@ func (t *Table) open() error {
 	if err != nil {
 		return fmt.Errorf("table open: %s", err)
 	}
+	db.FillPercent = 0.9
 	db.StrictMode = t.StrictMode
 	t.db = db
 
