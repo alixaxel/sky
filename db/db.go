@@ -31,6 +31,7 @@ type DB struct {
 	NoSync     bool
 	MaxDBs     uint
 	MaxReaders uint
+	StrictMode bool
 
 	tables map[string]*Table
 	path   string
@@ -171,5 +172,7 @@ func (db *DB) table(name string) *Table {
 	}
 
 	// Create table instance and return it.
-	return NewTable(name, db.tablePath(name))
+	t := NewTable(name, db.tablePath(name))
+	t.StrictMode = db.StrictMode
+	return t
 }
