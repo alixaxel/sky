@@ -17,6 +17,7 @@ const (
 	DefaultPidPath              = "/var/run/skyd.pid"
 	DefaultStreamFlushThreshold = 1000
 	DefaultParallelism          = 0 // zero means set it to number of CPUs
+	DefaultStrictMode           = false
 )
 
 //------------------------------------------------------------------------------
@@ -33,6 +34,7 @@ type Config struct {
 	StreamFlushThreshold uint   `toml:"stream-flush-threshold"`
 	Parallelism          uint   `toml:"parallelism"`
 	NewRelicKey          string `toml:"newrelic-key"`
+	StrictMode           bool   `toml:"strict-mode"`
 }
 
 //------------------------------------------------------------------------------
@@ -49,6 +51,7 @@ func NewConfig() *Config {
 		PidPath:              DefaultPidPath,
 		StreamFlushThreshold: DefaultStreamFlushThreshold,
 		Parallelism:          DefaultParallelism,
+		StrictMode:           DefaultStrictMode,
 	}
 }
 

@@ -62,6 +62,8 @@ type TableStats struct {
 type Table struct {
 	sync.Mutex
 
+	StrictMode bool
+
 	db             *bolt.DB
 	name           string
 	path           string
@@ -174,6 +176,7 @@ func (t *Table) open() error {
 	if err != nil {
 		return fmt.Errorf("table open: %s", err)
 	}
+	db.StrictMode = t.StrictMode
 	t.db = db
 
 	// Initialize schema.

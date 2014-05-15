@@ -44,6 +44,7 @@ func init() {
 	flag.UintVar(&config.StreamFlushThreshold, "stream-flush-threshold", config.StreamFlushThreshold, "the maximum number of events (per table) in event stream before flush")
 	flag.UintVar(&config.Parallelism, "parallelism", config.Parallelism, "the number of cores to use, ie gomaxprocs")
 	flag.StringVar(&config.NewRelicKey, "newrelic-key", "", "New Relic license key")
+	flag.BoolVar(&config.StrictMode, "strict-mode", config.StrictMode, "Strict mode")
 }
 
 //--------------------------------------

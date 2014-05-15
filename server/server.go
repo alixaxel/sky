@@ -48,6 +48,7 @@ type Server struct {
 	mutex                sync.Mutex
 	streamFlushThreshold uint
 	newRelicAgent        *gorelic.Agent
+	strictMode           bool
 }
 
 //------------------------------------------------------------------------------
@@ -85,6 +86,7 @@ func NewServer(config *Config) *Server {
 		path:                 config.DataPath,
 		tables:               make(map[string]*db.Table),
 		streamFlushThreshold: config.StreamFlushThreshold,
+		strictMode:           config.StrictMode,
 	}
 
 	// Set up New Relic agent if we have a license key
@@ -209,7 +211,7 @@ func (s *Server) open() error {
 	}
 
 	// Initialize and open database.
-	s.DB = &db.DB{}
+	s.DB = &db.DB{StrictMode: s.strictMode}
 	if err = s.DB.Open(s.path); err != nil {
 		s.close()
 		return err
