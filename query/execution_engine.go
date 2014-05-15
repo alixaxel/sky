@@ -133,7 +133,7 @@ void bolt_cursor_init(bolt_cursor *c, void *data, size_t pgsz, pgid root) {
 // Positions the cursor to the first leaf element and returns the key/value pair.
 void bolt_cursor_first(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *flags) {
     // reset stack to initial state
-    elem_ref *ref = cursor_push(c, c->root);
+    cursor_push(c, c->root);
 
     // Find first leaf and return key/value.
     cursor_key_value(c, key, value, flags);
@@ -141,7 +141,6 @@ void bolt_cursor_first(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t 
 
 // Positions the cursor to the next leaf element and returns the key/value pair.
 void bolt_cursor_next(bolt_cursor *c, bolt_val *key, bolt_val *value, uint32_t *flags) {
-    int i;
     elem_ref *ref;
 
     // Attempt to move over one element until we're successful.
