@@ -125,3 +125,22 @@ func TestServerTableKeys(t *testing.T) {
 		assertResponse(t, resp, 200, `["a0","a1","a2","a3"]`+"\n", "POST /tables/:name/keys failed.")
 	})
 }
+
+// Ensure that we can retrieve stats for a table.
+func TestServerTableStats(t *testing.T) {
+	runTestServer(func(s *Server) {
+		setupTestTable("foo")
+		setupTestProperty("foo", "value", true, "integer")
+		setupTestData(t, "foo", [][]string{
+			[]string{"a0", "2012-01-01T00:00:00Z", `{"data":{"value":1}}`},
+			[]string{"a1", "2012-01-01T00:00:00Z", `{"data":{"value":2}}`},
+			[]string{"a1", "2012-01-01T00:00:01Z", `{"data":{"value":3}}`},
+			[]string{"a2", "2012-01-01T00:00:00Z", `{"data":{"value":4}}`},
+			[]string{"a2", "2012-01-01T00:00:01Z", `{"data":{"value":4}}`},
+			[]string{"a3", "2012-01-01T00:00:00Z", `{"data":{"value":5}}`},
+		})
+
+		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/stats?everything=true", "application/json", "")
+		assertResponse(t, resp, 200, `{"branchPages":0,"branchOverflow":0,"leafPages":4,"leafOverflow":0,"keyCount":10,"depth":2,"branchAlloc":0,"branchInuse":0,"leafAlloc":16384,"leafInuse":474,"buckets":20,"inlineBuckets":16,"inlineBucketInuse":466}`+"\n", "GET /tables/:name/stats failed.")
+	})
+}
