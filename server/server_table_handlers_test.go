@@ -140,7 +140,7 @@ func TestServerTableStats(t *testing.T) {
 			[]string{"a3", "2012-01-01T00:00:00Z", `{"data":{"value":5}}`},
 		})
 
-		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/stats?everything=true", "application/json", "")
+		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/stats?all=true", "application/json", "")
 		assertResponse(t, resp, 200, `{"branchPages":0,"branchOverflow":0,"leafPages":4,`+
 			`"leafOverflow":0,"keyCount":11,"depth":2,"branchAlloc":0,"branchInuse":0,`+
 			`"leafAlloc":16384,"leafInuse":474,"buckets":21,"inlineBuckets":17,"inlineBucketInuse":649}`+

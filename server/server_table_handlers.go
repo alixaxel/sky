@@ -147,9 +147,8 @@ func (s *Server) statsHandler(w http.ResponseWriter, req *http.Request, params m
 		return nil, err
 	}
 
-	var everything bool = req.FormValue("everything") == "true"
-
-	return table.Stats(everything)
+	var all bool = req.FormValue("all") == "true"
+	return table.Stats(all)
 }
 
 type tableMessage struct {
