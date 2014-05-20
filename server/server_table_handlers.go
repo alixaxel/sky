@@ -31,6 +31,9 @@ func (s *Server) addTableHandlers() {
 	s.ApiHandleFunc("/tables/{name}/stats", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.statsHandler(w, req, params)
 	}).Methods("GET")
+	s.ApiHandleFunc("/tables/{name}/top", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
+		return s.objectStatsHandler(w, req, params)
+	}).Methods("GET")
 	s.router.HandleFunc("/tables/{name}/view/{path:.+}", s.viewTableHandler).Methods("GET")
 	s.router.HandleFunc("/tables/{name}/copy", s.tableCopyHandler).Methods("GET")
 }
@@ -156,6 +159,61 @@ func (s *Server) tableKeysHandler(w http.ResponseWriter, req *http.Request, para
 	sort.Strings(keys)
 
 	return keys, nil
+}
+
+// GET /tables/:name/top?count=20
+func (s *Server) objectStatsHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
+	vars := mux.Vars(req)
+	t, err := s.OpenTable(vars["name"])
+	if err != nil {
+		return nil, err
+	}
+
+	var total int = 100
+	if req.FormValue("count") != "" {
+		i, err := strconv.Atoi(req.FormValue("count"))
+		if err == nil {
+			total = i
+		}
+	}
+
+	var top = make([]struct {
+		Id    string
+		Count int
+	}, total)
+	var lowest = 0
+	_ = t.View(func(tx *db.Tx) error {
+		for _, shard := range tx.Shards() {
+			shard.ForEach(func(key, val []byte) error {
+				if val != nil {
+					// If it's not a bucket, skip.
+					return nil
+				}
+				// Count the keys in the object.
+				var eventCount = 0
+				var object = shard.Bucket(key)
+				object.ForEach(func(_, _ []byte) error {
+					eventCount += 1
+					return nil
+				})
+				// If event count reaches top, remember it.
+				if eventCount > lowest {
+					i := sort.Search(total, func(i int) bool {
+						return eventCount > top[i].Count
+					})
+					if i < total {
+						copy(top[i+1:], top[i:])
+						top[i].Id = string(key)
+						top[i].Count = eventCount
+						lowest = top[total-1].Count
+					}
+				}
+				return nil
+			})
+		}
+		return nil
+	})
+	return top, nil
 }
 
 // GET /tables/:name/stats
