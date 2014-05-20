@@ -699,7 +699,7 @@ func TestTableStats(t *testing.T) {
 			return nil
 		})
 
-		stats, err := table.Stats()
+		stats, err := table.Stats(true)
 		assert.NoError(t, err)
 
 		assert.Equal(t, stats.KeyCount, 3)

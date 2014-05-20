@@ -77,15 +77,17 @@ type Table struct {
 	maxTransientID int
 }
 
-// Gather stats from bolt and return the stats as a map so the internals of bolt.BucketStats
-// are not exposed to the caller
-func (t *Table) Stats() (*TableStats, error) {
+// Gather storage stats from bolt. Account only for data buckets if parameter all is false,
+// otherwise include everything (factors and meta buckets).
+func (t *Table) Stats(all bool) (*TableStats, error) {
+	var shardPrefix = []byte("shard")
 	stats := new(TableStats)
-
 	err := t.db.View(func(tx *bolt.Tx) error {
 		var s bolt.BucketStats
 		tx.ForEach(func(name []byte, b *bolt.Bucket) error {
-			s.Add(b.Stats())
+			if all || bytes.HasPrefix(name, shardPrefix) {
+				s.Add(b.Stats())
+			}
 			return nil
 		})
 
