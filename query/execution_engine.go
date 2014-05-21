@@ -748,6 +748,11 @@ bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
     bolt_val event_key, event_data;
     bolt_cursor_seek(&cursor->event_cursor, cursor->min_event_key, &event_key, &event_data, &flags);
 
+    // Make sure there is a next event.
+    if(event_key.data == NULL) {
+        return false;
+    }
+
     // Make sure the first event is not past the timestamp range.
     if(cursor->max_event_key.size > 0 && memcmp(event_key.data, cursor->max_event_key.data, cursor->max_event_key.size) > 0) {
         return false;
