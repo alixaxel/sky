@@ -5,6 +5,7 @@ import (
 	"fmt"
 	"net/http"
 	"sort"
+	"strconv"
 
 	"github.com/boltdb/boltd"
 	"github.com/gorilla/mux"
@@ -30,8 +31,8 @@ func (s *Server) addTableHandlers() {
 	s.ApiHandleFunc("/tables/{name}/stats", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.statsHandler(w, req, params)
 	}).Methods("GET")
-
 	s.router.HandleFunc("/tables/{name}/view/{path:.+}", s.viewTableHandler).Methods("GET")
+	s.router.HandleFunc("/tables/{name}/copy", s.tableCopyHandler).Methods("GET")
 }
 
 // GET /tables
@@ -115,6 +116,23 @@ func (s *Server) deleteTableHandler(w http.ResponseWriter, req *http.Request, pa
 	vars := mux.Vars(req)
 	tableName := vars["name"]
 	return nil, s.DB.DropTable(tableName)
+}
+
+// GET /tables/:name/copy
+func (s *Server) tableCopyHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	t, err := s.OpenTable(vars["name"])
+	if err != nil {
+		w.Header().Set("Content-Type", "text/plain")
+		w.WriteHeader(http.StatusBadRequest)
+		w.Write([]byte(err.Error()))
+		return
+	}
+	t.View(func(tx *db.Tx) error {
+		w.Header().Set("Content-Length", strconv.Itoa(int(tx.Size())))
+		w.Header().Set("Content-Type", "application/octet-steam")
+		return tx.Copy(w)
+	})
 }
 
 // GET /tables/:name/objects/keys
