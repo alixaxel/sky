@@ -161,6 +161,7 @@ func TestServerTableCopy(t *testing.T) {
 		if err != nil {
 			t.Fatalf("Failed to copy table: %s", err)
 		}
+		f.Close()
 
 		// Now test the copied table
 		resp, _ = sendTestHttpRequest("GET", "http://localhost:8586/tables/bar/keys", "application/json", "")
