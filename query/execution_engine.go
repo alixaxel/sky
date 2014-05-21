@@ -719,16 +719,19 @@ void sky_cursor_set_property(sky_cursor *cursor, int64_t property_id,
 // Sets up object after cursor has already been positioned.
 bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
 {
+    printf("[DEBUG] sky_cursor_iter_object (0):\n");
     if(cursor->key_prefix != NULL && (key->size < cursor->key_prefix_sz || memcmp(cursor->key_prefix, key->data, cursor->key_prefix_sz) != 0)) {
         return false;
     }
     // fprintf(stderr, "\nOBJ (%.*s) [%d]\n", (int)key->mv_size, (char*)key->mv_data, (int)key->mv_size);
+    printf("[DEBUG] sky_cursor_iter_object (1):\n");
 
     // Clear the data object if set.
     cursor->session_idle_in_sec = 0;
     cursor->eos_wait = false;
     cursor->next_event->eof = false;
     memset(cursor->event, 0, cursor->event_sz);
+    printf("[DEBUG] sky_cursor_iter_object (2):\n");
 
     // Extract the bucket from the object cursor and init event cursor.
     //
@@ -742,20 +745,25 @@ bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
     } else {
         bolt_cursor_init(&cursor->event_cursor, cursor->object_cursor.data, cursor->object_cursor.pgsz, b->root);
     }
+    printf("[DEBUG] sky_cursor_iter_object (3):\n");
 
     // Read the first event into the cursor buffer.
     uint32_t flags;
     bolt_val event_key, event_data;
     bolt_cursor_seek(&cursor->event_cursor, cursor->min_event_key, &event_key, &event_data, &flags);
+    printf("[DEBUG] sky_cursor_iter_object (4):\n");
 
     // Make sure the first event is not past the timestamp range.
+    printf("[DEBUG] sky_cursor_iter_object (4.1): cursor=%d, event_key=%d event_key.data=%s \n", cursor, event_key, event_key.data);
     if(cursor->max_event_key.size > 0 && memcmp(event_key.data, cursor->max_event_key.data, cursor->max_event_key.size) > 0) {
         return false;
     }
+    printf("[DEBUG] sky_cursor_iter_object (5):\n");
 
     if(!sky_cursor_read(cursor, cursor->next_event, event_data.data)) {
         return false;
     }
+    printf("[DEBUG] sky_cursor_iter_object (6):\n");
 
     // Move "next" event to current event and put the next event in buffer.
     return sky_cursor_next_event(cursor);
@@ -765,6 +773,7 @@ bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
 // move to the first object that with the given prefix.
 bool sky_cursor_first_object(sky_cursor *cursor)
 {
+    printf("[DEBUG] sky_cursor_first_object (0):\n");
     uint32_t flags;
     bolt_val key, data, seek;
 
@@ -772,6 +781,7 @@ bool sky_cursor_first_object(sky_cursor *cursor)
     if (cursor->object_cursor.root == 0) {
         return false;
     }
+    printf("[DEBUG] sky_cursor_first_object (1):\n");
 
     if(cursor->key_prefix == NULL) {
         bolt_cursor_first(&cursor->object_cursor, &key, &data, &flags);
@@ -788,6 +798,7 @@ bool sky_cursor_first_object(sky_cursor *cursor)
             return false;
         }
     }
+    printf("[DEBUG] sky_cursor_first_object (2):\n");
 
     return sky_cursor_iter_object(cursor, &key, &data);
 }
@@ -795,6 +806,7 @@ bool sky_cursor_first_object(sky_cursor *cursor)
 // Moves the cursor to point to the next object.
 bool sky_cursor_next_object(sky_cursor *cursor)
 {
+    printf("[DEBUG] sky_cursor_next_object (0):\n");
     // Move to next object.
     uint32_t flags;
     bolt_val key, data;

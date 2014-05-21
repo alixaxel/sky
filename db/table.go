@@ -143,6 +143,7 @@ func (t *Table) Create() error {
 	// Set initial shard count.
 	if t.shardCount == 0 {
 		t.shardCount = runtime.NumCPU()
+		t.shardCount = 1
 	}
 
 	// Open the table.
