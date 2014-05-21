@@ -753,6 +753,11 @@ bool sky_cursor_iter_object(sky_cursor *cursor, bolt_val *key, bolt_val *data)
     bolt_cursor_seek(&cursor->event_cursor, cursor->min_event_key, &event_key, &event_data, &flags);
     printf("[DEBUG] sky_cursor_iter_object (4):\n");
 
+    // Make sure there is a next event.
+    if(event_key.data == NULL) {
+        return false;
+    }
+
     // Make sure the first event is not past the timestamp range.
     printf("[DEBUG] sky_cursor_iter_object (4.1): cursor=%d, event_key=%d event_key.data=%s \n", cursor, event_key, event_key.data);
     if(cursor->max_event_key.size > 0 && memcmp(event_key.data, cursor->max_event_key.data, cursor->max_event_key.size) > 0) {
