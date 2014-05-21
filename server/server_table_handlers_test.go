@@ -190,3 +190,22 @@ func TestServerTableStats(t *testing.T) {
 			"\n", "GET /tables/:name/stats failed.")
 	})
 }
+
+// Ensure that we can retrieve stats for a table.
+func TestServerObjectStats(t *testing.T) {
+	runTestServer(func(s *Server) {
+		setupTestTable("foo")
+		setupTestProperty("foo", "value", true, "integer")
+		setupTestData(t, "foo", [][]string{
+			[]string{"a0", "2012-01-01T00:00:00Z", `{"data":{"value":1}}`},
+			[]string{"a1", "2012-01-01T00:00:00Z", `{"data":{"value":2}}`},
+			[]string{"a1", "2012-01-01T00:00:01Z", `{"data":{"value":3}}`},
+			[]string{"a2", "2012-01-01T00:00:00Z", `{"data":{"value":4}}`},
+			[]string{"a2", "2012-01-01T00:00:01Z", `{"data":{"value":4}}`},
+			[]string{"a3", "2012-01-01T00:00:00Z", `{"data":{"value":5}}`},
+		})
+
+		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/top?count=2", "application/json", "")
+		assertResponse(t, resp, 200, `[{"Id":"a1","Count":2},{"Id":"a2","Count":2}]`+"\n", "GET /tables/:name/stats failed.")
+	})
+}
