@@ -6,6 +6,7 @@ import (
 	"net/http"
 	"sort"
 
+	"github.com/boltdb/boltd"
 	"github.com/gorilla/mux"
 	"github.com/skydb/sky/db"
 )
@@ -29,6 +30,8 @@ func (s *Server) addTableHandlers() {
 	s.ApiHandleFunc("/tables/{name}/stats", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.statsHandler(w, req, params)
 	}).Methods("GET")
+
+	s.router.HandleFunc("/tables/{name}/view/{path:.+}", s.viewTableHandler).Methods("GET")
 }
 
 // GET /tables
@@ -149,6 +152,19 @@ func (s *Server) statsHandler(w http.ResponseWriter, req *http.Request, params m
 
 	var all bool = req.FormValue("all") == "true"
 	return table.Stats(all)
+}
+
+// GET /tables/:name/view
+func (s *Server) viewTableHandler(w http.ResponseWriter, req *http.Request) {
+	vars := mux.Vars(req)
+	t, err := s.OpenTable(vars["name"])
+	if err != nil {
+		http.Error(w, "table not found", http.StatusNotFound)
+		return
+	}
+
+	prefix := fmt.Sprintf("/tables/%s/view", vars["name"])
+	http.StripPrefix(prefix, boltd.NewHandler(t.DB())).ServeHTTP(w, req)
 }
 
 type tableMessage struct {
