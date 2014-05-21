@@ -130,6 +130,11 @@ func (t *Table) ShardCount() int {
 	return t.shardCount
 }
 
+// DB returns a reference to the underlying Bolt database.
+func (t *Table) DB() *bolt.DB {
+	return t.db
+}
+
 // Exists returns whether the table exists.
 func (t *Table) Exists() bool {
 	_, err := os.Stat(t.path)
