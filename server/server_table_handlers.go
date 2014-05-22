@@ -161,7 +161,8 @@ func (s *Server) tableKeysHandler(w http.ResponseWriter, req *http.Request, para
 	return keys, nil
 }
 
-// GET /tables/:name/top?count=20
+// GET /tables/:name/top?count=20&by=count
+// Returns stats about top @count objects by count or size.
 func (s *Server) objectStatsHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 	vars := mux.Vars(req)
 	t, err := s.OpenTable(vars["name"])
@@ -180,33 +181,63 @@ func (s *Server) objectStatsHandler(w http.ResponseWriter, req *http.Request, pa
 	var top = make([]struct {
 		Id    string
 		Count int
+		Alloc int
+		Inuse int
 	}, total)
-	var lowest = 0
+
+	var metric func(int) int // used to extract measured value from top entries by index
+	var by string
+	switch req.FormValue("by") {
+	case "count":
+		by = "count"
+		metric = func(i int) int { return top[i].Count }
+	default:
+		by = "size"
+		metric = func(i int) int { return top[i].Inuse }
+	}
+
 	_ = t.View(func(tx *db.Tx) error {
+		var lowest int
 		for _, shard := range tx.Shards() {
 			shard.ForEach(func(key, val []byte) error {
 				if val != nil {
 					// If it's not a bucket, skip.
 					return nil
 				}
-				// Count the keys in the object.
-				var eventCount = 0
-				var object = shard.Bucket(key)
-				object.ForEach(func(_, _ []byte) error {
-					eventCount += 1
-					return nil
-				})
-				// If event count reaches top, remember it.
-				if eventCount > lowest {
-					i := sort.Search(total, func(i int) bool {
-						return eventCount > top[i].Count
-					})
-					if i < total {
-						copy(top[i+1:], top[i:])
-						top[i].Id = string(key)
-						top[i].Count = eventCount
-						lowest = top[total-1].Count
+				// Get the stats for the object.
+				var stats = shard.Bucket(key).Stats()
+
+				// Extract the measured value.
+				var value int
+				switch {
+				case by == "count":
+					value = stats.KeyN
+				case by == "size" && stats.InlineBucketN == 1:
+					value = stats.InlineBucketInuse
+				default:
+					value = stats.LeafInuse
+				}
+				// If measured value reaches top, record the stats in the top list.
+				if value > lowest {
+					// Find the position in top list.
+					i := sort.Search(total, func(i int) bool { return value > metric(i) })
+					if !(i < total) {
+						return nil // This shouldn't happen but let's be safe.
 					}
+					// Make room for new entry
+					copy(top[i+1:], top[i:])
+					top[i].Id = string(key)
+					top[i].Count = stats.KeyN
+					if stats.InlineBucketN == 1 {
+						// For inline bucket report allocation as 0 since it's using parent's allocation.
+						top[i].Alloc = 0
+						top[i].Inuse = stats.InlineBucketInuse
+					} else {
+						top[i].Alloc = stats.LeafAlloc
+						top[i].Inuse = stats.LeafInuse
+					}
+					// Update the lowest value.
+					lowest = metric(total - 1)
 				}
 				return nil
 			})
