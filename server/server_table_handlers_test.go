@@ -206,6 +206,7 @@ func TestServerObjectStats(t *testing.T) {
 		})
 
 		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/top?count=2", "application/json", "")
-		assertResponse(t, resp, 200, `[{"Id":"a1","Count":2},{"Id":"a2","Count":2}]`+"\n", "GET /tables/:name/stats failed.")
+		assertResponse(t, resp, 200, `[{"Id":"a1","Count":2,"Alloc":0,"Inuse":86},{"Id":"a2","Count":2,"Alloc":0,"Inuse":86}]`+
+			"\n", "GET /tables/:name/stats failed.")
 	})
 }
