@@ -1,6 +1,7 @@
 package server
 
 import (
+	"compress/gzip"
 	"errors"
 	"fmt"
 	"net/http"
@@ -131,10 +132,28 @@ func (s *Server) tableCopyHandler(w http.ResponseWriter, req *http.Request) {
 		w.Write([]byte(err.Error()))
 		return
 	}
+	fn := vars["name"]
+	compressed := false
+	switch req.FormValue("compression") {
+	case "gzip":
+		fn = fn + ".gz"
+		w.Header().Set("Content-Type", "application/x-gzip")
+		compressed = true
+	default:
+		w.Header().Set("Content-Type", "application/octet-stream")
+	}
+	w.Header().Set("Content-Disposition", fmt.Sprintf(`attachment; filename="%s"`, fn))
 	t.View(func(tx *db.Tx) error {
-		w.Header().Set("Content-Length", strconv.Itoa(int(tx.Size())))
-		w.Header().Set("Content-Type", "application/octet-steam")
-		return tx.Copy(w)
+		if compressed {
+			gz := gzip.NewWriter(w)
+			if err := tx.Copy(gz); err != nil {
+				return err
+			}
+			return gz.Close()
+		} else {
+			w.Header().Set("Content-Length", strconv.Itoa(int(tx.Size())))
+			return tx.Copy(w)
+		}
 	})
 }
 
