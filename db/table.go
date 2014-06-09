@@ -77,6 +77,11 @@ type Table struct {
 	maxTransientID int
 }
 
+// Get current transaction statistics
+func (t *Table) TransactionStats() Stat {
+	return t.stat
+}
+
 // Gather storage stats from bolt. Account only for data buckets if parameter all is false,
 // otherwise include everything (factors and meta buckets).
 func (t *Table) Stats(all bool) (*TableStats, error) {

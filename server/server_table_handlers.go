@@ -32,6 +32,9 @@ func (s *Server) addTableHandlers() {
 	s.ApiHandleFunc("/tables/{name}/stats", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.statsHandler(w, req, params)
 	}).Methods("GET")
+	s.ApiHandleFunc("/tables/{name}/tx_stats", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
+		return s.txStatsHandler(w, req, params)
+	}).Methods("GET")
 	s.ApiHandleFunc("/tables/{name}/top", func(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
 		return s.objectStatsHandler(w, req, params)
 	}).Methods("GET")
@@ -278,6 +281,19 @@ func (s *Server) statsHandler(w http.ResponseWriter, req *http.Request, params m
 
 	var all bool = req.FormValue("all") == "true"
 	return table.Stats(all)
+}
+
+// GET /tables/:name/tx_stats
+func (s *Server) txStatsHandler(w http.ResponseWriter, req *http.Request, params map[string]interface{}) (interface{}, error) {
+	vars := mux.Vars(req)
+
+	// Return an error if the table already exists.
+	table, err := s.OpenTable(vars["name"])
+	if err != nil {
+		return nil, err
+	}
+
+	return table.TransactionStats(), nil
 }
 
 // GET /tables/:name/view
