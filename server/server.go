@@ -173,7 +173,7 @@ func (s *Server) ListenAndServe(shutdownChannel chan bool) error {
 		var tables, err = s.Tables()
 		if err != nil {
 			s.logger.Printf("Failed to start expiration sweepers: %s", err)
-			return
+			return err
 		}
 		for _, t := range tables {
 			t.EnableExpiration(s.expiration)
