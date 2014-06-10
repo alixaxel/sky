@@ -713,6 +713,28 @@ func TestTableStats(t *testing.T) {
 	})
 }
 
+func TestTableExpirationSweep(t *testing.T) {
+	withDB(func(db *DB, path string) {
+		table, _ := db.CreateTable("foo", 16)
+		table.Update(func(tx *Tx) error {
+			startTime := time.Now()
+			for o := 0; o < 5; o++ { // 5 objects
+				for i := 0; i < 100; i++ { // 100 events each spaced by hour
+					e := &Event{Timestamp: startTime.Add(-time.Duration(i) * time.Hour)}
+					tx.InsertEvent(strconv.Itoa(o), e)
+				}
+			}
+			return nil
+		})
+		table.Expiration = time.Duration(50) * time.Hour
+		var count int
+		for i := 0; i < table.ShardCount()*10; i++ {
+			count += table.SweepNextObject()
+		}
+		assert.Equal(t, count, 250)
+	})
+}
+
 func newEvent(timestamp string, pairs ...interface{}) *Event {
 	e := &Event{Timestamp: mustParseTime(timestamp), Data: make(map[string]interface{})}
 	for i := 0; i < len(pairs); i += 2 {
