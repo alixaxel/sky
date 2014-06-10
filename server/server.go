@@ -49,6 +49,7 @@ type Server struct {
 	streamFlushThreshold uint
 	newRelicAgent        *gorelic.Agent
 	strictMode           bool
+	expiration           time.Duration
 }
 
 //------------------------------------------------------------------------------
@@ -87,6 +88,7 @@ func NewServer(config *Config) *Server {
 		tables:               make(map[string]*db.Table),
 		streamFlushThreshold: config.StreamFlushThreshold,
 		strictMode:           config.StrictMode,
+		expiration:           config.DataExpiration,
 	}
 
 	// Set up New Relic agent if we have a license key
@@ -166,6 +168,17 @@ func (s *Server) ListenAndServe(shutdownChannel chan bool) error {
 	}()
 
 	s.logger.Printf("Sky v%s is now listening on http://localhost%s\n", sky.Version, s.httpServer.Addr)
+
+	if s.expiration != 0 {
+		var tables, err = s.Tables()
+		if err != nil {
+			s.logger.Printf("Failed to start expiration sweepers: %s", err)
+			return
+		}
+		for _, t := range tables {
+			t.EnableExpiration(s.expiration)
+		}
+	}
 
 	return nil
 }

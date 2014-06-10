@@ -75,6 +75,50 @@ type Table struct {
 	shardCount     int
 	maxPermanentID int
 	maxTransientID int
+
+	// expiration sweep state
+	expiration    time.Duration
+	currentShard  int    // track index of currently swept shard
+	currentObject []byte // track the key of last swept object
+}
+
+func (t *Table) EnableExpiration(d time.Duration) {
+	t.expiration = d
+	go func(t *Table) {
+		for {
+			t.sweepNextObject()
+		}
+	}(t)
+}
+
+func (t *Table) sweepNextObject() {
+	t.Update(func(tx *Tx) error {
+		var b = tx.Bucket(shardDBName(t.currentShard))
+		var c = b.Cursor()
+		var key = t.currentObject
+		if key == nil { // very first run
+			key, _ = c.First()
+		} else {
+			c.Seek(key)
+			key, _ = c.Next()
+			if key == nil {
+				// when last shard is finished, roll over to the first shard
+				var sc = (t.currentShard + 1) % t.ShardCount()
+				t.currentShard = sc
+				b = tx.Bucket(shardDBName(sc))
+				c = b.Cursor()
+				key, _ = c.First()
+			}
+		}
+		t.currentObject = key
+		b = b.Bucket(key)
+		c = b.Cursor()
+		var bound = ShiftTimeBytes(time.Now().Add(-t.expiration))
+		for key, _ = c.First(); bytes.Compare(key, bound) < 0; key, _ = c.Next() {
+			c.Delete()
+		}
+		return nil
+	})
 }
 
 // Gather storage stats from bolt. Account only for data buckets if parameter all is false,
