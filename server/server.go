@@ -170,14 +170,22 @@ func (s *Server) ListenAndServe(shutdownChannel chan bool) error {
 	s.logger.Printf("Sky v%s is now listening on http://localhost%s\n", sky.Version, s.httpServer.Addr)
 
 	if s.expiration != 0 {
-		var tables, err = s.Tables()
-		if err != nil {
-			s.logger.Printf("Failed to start expiration sweepers: %s", err)
-			return err
-		}
-		for _, t := range tables {
-			t.EnableExpiration(s.expiration)
-		}
+		go func() {
+			for {
+				var tables, err = s.Tables()
+				if err != nil {
+					s.logger.Printf("Expiration Sweeper Terminated: %s", err)
+					return err
+				}
+				for _, t := range tables {
+					if err := t.Open(); err != nil {
+						s.logger.Printf("Expiration Sweeper Table Error: %s", err)
+						break
+					}
+					t.SweepNextObject(s.expiration)
+				}
+			}
+		}()
 	}
 
 	return nil

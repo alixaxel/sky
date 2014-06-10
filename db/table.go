@@ -77,21 +77,11 @@ type Table struct {
 	maxTransientID int
 
 	// expiration sweep state
-	Expiration    time.Duration
 	currentShard  int    // track index of currently swept shard
 	currentObject []byte // track the key of last swept object
 }
 
-func (t *Table) EnableExpiration(d time.Duration) {
-	t.Expiration = d
-	go func(t *Table) {
-		for {
-			t.SweepNextObject()
-		}
-	}(t)
-}
-
-func (t *Table) SweepNextObject() int {
+func (t *Table) SweepNextObject(expiration time.Duration) int {
 	var count int
 	t.Update(func(tx *Tx) error {
 		var b = tx.Bucket(shardDBName(t.currentShard))
@@ -114,7 +104,7 @@ func (t *Table) SweepNextObject() int {
 		t.currentObject = key
 		b = b.Bucket(key)
 		c = b.Cursor()
-		var bound = ShiftTimeBytes(time.Now().Add(-t.Expiration))
+		var bound = ShiftTimeBytes(time.Now().Add(-expiration))
 		for key, _ = c.First(); bytes.Compare(key, bound) < 0; key, _ = c.Next() {
 			// this should be replaced with a more efficient c.Delete()
 			b.Delete(key)
