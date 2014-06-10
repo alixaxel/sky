@@ -81,9 +81,18 @@ type Table struct {
 	currentObject []byte // track the key of last swept object
 }
 
+// SweepNextObject is used internally to implement automatic expiration of events
+// that are older than the global expiration time setting.
+// Return count of events deleted and the key of the object that was swept.
 func (t *Table) SweepNextObject(expiration time.Duration) (int, []byte) {
+	t.Lock()
+	defer t.Unlock()
+	if !t.opened() {
+		return 0, nil
+	}
 	var count int
 	t.Update(func(tx *Tx) error {
+		// Find next object in current shard.
 		var b = tx.Bucket(shardDBName(t.currentShard))
 		var c = b.Cursor()
 		var key = t.currentObject
@@ -93,24 +102,27 @@ func (t *Table) SweepNextObject(expiration time.Duration) (int, []byte) {
 			c.Seek(key)
 			key, _ = c.Next()
 		}
+		// If current shard is exhausted, move to the next one.
 		if key == nil {
-			// when last shard is finished, roll over to the first shard
+			// If this was the last shard, roll over to the first shard.
 			var sc = (t.currentShard + 1) % t.ShardCount()
 			t.currentShard = sc
 			t.currentObject = nil
-			// is it better to trigger a rollback since we didn't delete anything in this run?
+			// Is it better to trigger a rollback since we didn't delete anything in this run?
 			return nil
 		}
 		t.currentObject = key
 		b = b.Bucket(key)
 		c = b.Cursor()
 		var bound = ShiftTimeBytes(time.Now().Add(-expiration))
-		for key, _ = c.First(); bytes.Compare(key, bound) < 0; key, _ = c.Next() {
-			// this should be replaced with a more efficient c.Delete()
+		// Now iterate over the events from the begining until event timestamp reaches the bound
+		// and delete everything along the way.
+		for key, _ = c.First(); key != nil && bytes.Compare(key, bound) < 0; key, _ = c.Next() {
+			// This should be replaced with a more efficient c.Delete()
 			b.Delete(key)
 			count++
 		}
-		// is it better to trigger a rollback when count is 0?
+		// Is it better to trigger a rollback when count is 0?
 		return nil
 	})
 	return count, t.currentObject
