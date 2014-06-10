@@ -726,10 +726,11 @@ func TestTableExpirationSweep(t *testing.T) {
 			}
 			return nil
 		})
-		table.Expiration = time.Duration(50) * time.Hour
+		var expiration = time.Duration(50) * time.Hour
 		var count int
 		for i := 0; i < table.ShardCount()*10; i++ {
-			count += table.SweepNextObject()
+			c, _ := table.SweepNextObject(expiration)
+			count += c
 		}
 		assert.Equal(t, count, 250)
 	})

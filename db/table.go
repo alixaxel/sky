@@ -81,7 +81,7 @@ type Table struct {
 	currentObject []byte // track the key of last swept object
 }
 
-func (t *Table) SweepNextObject(expiration time.Duration) int {
+func (t *Table) SweepNextObject(expiration time.Duration) (int, []byte) {
 	var count int
 	t.Update(func(tx *Tx) error {
 		var b = tx.Bucket(shardDBName(t.currentShard))
@@ -113,7 +113,7 @@ func (t *Table) SweepNextObject(expiration time.Duration) int {
 		// is it better to trigger a rollback when count is 0?
 		return nil
 	})
-	return count
+	return count, t.currentObject
 }
 
 // Gather storage stats from bolt. Account only for data buckets if parameter all is false,

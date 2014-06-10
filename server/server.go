@@ -175,16 +175,19 @@ func (s *Server) ListenAndServe(shutdownChannel chan bool) error {
 				var tables, err = s.Tables()
 				if err != nil {
 					s.logger.Printf("Expiration Sweeper Terminated: %s", err)
-					return err
+					return
 				}
 				for _, t := range tables {
 					if err := t.Open(); err != nil {
 						s.logger.Printf("Expiration Sweeper Table Error: %s", err)
 						break
 					}
-					t.SweepNextObject(s.expiration)
+					count, key := t.SweepNextObject(s.expiration)
+					s.logger.Printf("Expiration Sweep table=%s, object=%s, count=%d", t.Name(), key, count)
 				}
+				s.logger.Printf("Expiration Sweeper Iteration Finished")
 			}
+			s.logger.Printf("Expiration Sweeper Exiting")
 		}()
 	}
 
