@@ -20,6 +20,9 @@ import (
 // This cache size is per-property.
 const FactorCacheSize = 1000
 
+// SweepBatchSize is the number of objects swept or events deleted in a single expiration sweep.
+const SweepBatchSize = 1000
+
 var (
 	// ErrObjectIDRequired is returned inserting, deleting, or retrieving
 	// event data without specifying an object identifier.
@@ -83,49 +86,50 @@ type Table struct {
 
 // SweepNextObject is used internally to implement automatic expiration of events
 // that are older than the global expiration time setting.
-// Return count of events deleted and the key of the object that was swept.
-func (t *Table) SweepNextObject(expiration time.Duration) (int, []byte) {
+// Return count of events deleted and count of objects that were swept.
+func (t *Table) SweepNextBatch(expiration time.Duration) (swept int, deleted int) {
 	t.Lock()
 	defer t.Unlock()
 	if !t.opened() {
-		return 0, nil
+		return
 	}
-	var count int
 	t.Update(func(tx *Tx) error {
-		// Find next object in current shard.
-		var b = tx.Bucket(shardDBName(t.currentShard))
-		var c = b.Cursor()
-		var key = t.currentObject
-		if key == nil {
-			key, _ = c.First()
-		} else {
-			c.Seek(key)
-			key, _ = c.Next()
-		}
-		// If current shard is exhausted, move to the next one.
-		if key == nil {
-			// If this was the last shard, roll over to the first shard.
-			var sc = (t.currentShard + 1) % t.ShardCount()
-			t.currentShard = sc
-			t.currentObject = nil
-			// Is it better to trigger a rollback since we didn't delete anything in this run?
-			return nil
-		}
-		t.currentObject = key
-		b = b.Bucket(key)
-		c = b.Cursor()
 		var bound = ShiftTimeBytes(time.Now().Add(-expiration))
-		// Now iterate over the events from the begining until event timestamp reaches the bound
-		// and delete everything along the way.
-		for key, _ = c.First(); key != nil && bytes.Compare(key, bound) < 0; key, _ = c.Next() {
-			// This should be replaced with a more efficient c.Delete()
-			b.Delete(key)
-			count++
+		// Find next object in current shard.
+		var sb = tx.Bucket(shardDBName(t.currentShard))
+		var sc = sb.Cursor()
+		for ; swept < SweepBatchSize && deleted < SweepBatchSize; swept += 1 {
+			var key = t.currentObject
+			if key == nil {
+				key, _ = sc.First()
+			} else {
+				sc.Seek(key)
+				key, _ = sc.Next()
+			}
+			// If current shard is exhausted, move to the next one.
+			if key == nil {
+				// If this was the last shard, roll over to the first shard.
+				t.currentShard = (t.currentShard + 1) % t.ShardCount()
+				sb = tx.Bucket(shardDBName(t.currentShard))
+				sc = sb.Cursor()
+				t.currentObject = nil
+				continue // Hitting the end of the shard counts as an object sweep too.
+			}
+			t.currentObject = key
+			var ob = sb.Bucket(key)
+			var oc = ob.Cursor()
+			// Now iterate over the events from the begining until event timestamp reaches the bound
+			// and delete everything along the way.
+			for key, _ = oc.First(); key != nil && bytes.Compare(key, bound) < 0; key, _ = oc.Next() {
+				// This should be replaced with a more efficient oc.Delete()
+				ob.Delete(key)
+				deleted++
+			}
 		}
-		// Is it better to trigger a rollback when count is 0?
+		// Is it better to trigger a rollback when deleted is 0?
 		return nil
 	})
-	return count, t.currentObject
+	return
 }
 
 // Gather storage stats from bolt. Account only for data buckets if parameter all is false,
