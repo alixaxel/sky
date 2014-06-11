@@ -86,8 +86,8 @@ type Table struct {
 
 // SweepNextObject is used internally to implement automatic expiration of events
 // that are older than the global expiration time setting.
-// Return count of events deleted and count of objects that were swept.
-func (t *Table) SweepNextBatch(expiration time.Duration) (swept int, deleted int) {
+// Return count of objects that were swept and count of events and objects deleted.
+func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects int) {
 	t.Lock()
 	defer t.Unlock()
 	if !t.opened() {
@@ -98,7 +98,7 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept int, deleted int
 		// Find next object in current shard.
 		var sb = tx.Bucket(shardDBName(t.currentShard))
 		var sc = sb.Cursor()
-		for ; swept < SweepBatchSize && deleted < SweepBatchSize; swept += 1 {
+		for ; swept < SweepBatchSize && events < SweepBatchSize; swept += 1 {
 			var key = t.currentObject
 			if key == nil {
 				key, _ = sc.First()
@@ -123,7 +123,11 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept int, deleted int
 			for key, _ = oc.First(); key != nil && bytes.Compare(key, bound) < 0; key, _ = oc.Next() {
 				// This should be replaced with a more efficient oc.Delete()
 				ob.Delete(key)
-				deleted++
+				events++
+			}
+			if key == nil { // Object is now empty, nuke it.
+				sb.DeleteBucket(t.currentObject)
+				objects++
 			}
 		}
 		// Is it better to trigger a rollback when deleted is 0?

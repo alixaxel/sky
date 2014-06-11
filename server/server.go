@@ -183,9 +183,9 @@ func (s *Server) ListenAndServe(shutdownChannel chan bool) error {
 						s.logger.Printf("EXPIRATION Sweeper Error: %s", err)
 						break
 					}
-					var swept, deleted = t.SweepNextBatch(s.expiration)
-					if deleted > 0 {
-						s.logger.Printf("EXPIRATION: table=%s, swept=%d, deleted=%d", t.Name(), swept, deleted)
+					var swept, events, objects = t.SweepNextBatch(s.expiration)
+					if events > 0 {
+						s.logger.Printf("EXPIRATION: table=%s, swept=%d, events=%d, objects=%d", t.Name(), swept, events, objects)
 					}
 				}
 			}

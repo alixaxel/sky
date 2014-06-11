@@ -716,6 +716,7 @@ func TestTableStats(t *testing.T) {
 func TestTableExpirationSweep(t *testing.T) {
 	withDB(func(db *DB, path string) {
 		table, _ := db.CreateTable("foo", 16)
+		var expiration = time.Duration(50) * time.Hour
 		table.Update(func(tx *Tx) error {
 			startTime := time.Now()
 			for o := 0; o < 5; o++ { // 5 objects
@@ -724,11 +725,17 @@ func TestTableExpirationSweep(t *testing.T) {
 					tx.InsertEvent(strconv.Itoa(o), e)
 				}
 			}
+			for o := 10; o < 15; o++ { // 5 objects
+				for i := 0; i < 10; i++ { // 10 events each spaced by hour
+					e := &Event{Timestamp: startTime.Add(-expiration - time.Duration(i)*time.Hour)}
+					tx.InsertEvent(strconv.Itoa(o), e)
+				}
+			}
 			return nil
 		})
-		var expiration = time.Duration(50) * time.Hour
-		var swept, deleted = table.SweepNextBatch(expiration)
-		assert.Equal(t, deleted, 250)
+		var swept, events, objects = table.SweepNextBatch(expiration)
+		assert.Equal(t, events, 300)
+		assert.Equal(t, objects, 5)
 		assert.Equal(t, swept, SweepBatchSize)
 	})
 }
