@@ -149,7 +149,7 @@ func TestServerTableCopy(t *testing.T) {
 			t.Fatalf("Unexpected response status: %d", resp.StatusCode)
 		}
 		contentDisposition := resp.Header.Get("Content-Disposition")
-		if contentDisposition != `attachment, filename="bar"` {
+		if contentDisposition != `attachment; filename="foo"` {
 			t.Fatal("Wrong Content-Disposition!")
 		}
 		contentLength := resp.Header.Get("Content-Length")
