@@ -27,6 +27,11 @@ var (
 	// ErrObjectIDRequired is returned inserting, deleting, or retrieving
 	// event data without specifying an object identifier.
 	ErrObjectIDRequired = errors.New("object id required")
+
+	// NoDeletes is used internally by the expiration sweeper
+	// to signal that the transaction should rollback instead of committing
+	// for performance reasons
+	NoDeletes = errors.New("nothing was deleted, rollback instead of commit")
 )
 
 // NewTable returns a reference to a new table.
@@ -99,25 +104,23 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 		var sb = tx.Bucket(shardDBName(t.currentShard))
 		var sc = sb.Cursor()
 		for ; swept < SweepBatchSize && events < SweepBatchSize; swept += 1 {
-			var key = t.currentObject
-			if key == nil {
-				key, _ = sc.First()
+			if t.currentObject == nil {
+				t.currentObject, _ = sc.First()
 			} else {
-				sc.Seek(key)
-				key, _ = sc.Next()
+				sc.Seek(t.currentObject)
+				t.currentObject, _ = sc.Next()
 			}
 			// If current shard is exhausted, move to the next one.
-			if key == nil {
+			if t.currentObject == nil {
 				// If this was the last shard, roll over to the first shard.
 				t.currentShard = (t.currentShard + 1) % t.ShardCount()
 				sb = tx.Bucket(shardDBName(t.currentShard))
 				sc = sb.Cursor()
-				t.currentObject = nil
 				continue // Hitting the end of the shard counts as an object sweep too.
 			}
-			t.currentObject = key
-			var ob = sb.Bucket(key)
+			var ob = sb.Bucket(t.currentObject)
 			var oc = ob.Cursor()
+			var key []byte
 			// Now iterate over the events from the begining until event timestamp reaches the bound
 			// and delete everything along the way.
 			for key, _ = oc.First(); key != nil && bytes.Compare(key, bound) < 0; key, _ = oc.Next() {
@@ -125,12 +128,15 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 				ob.Delete(key)
 				events++
 			}
-			if key == nil { // Object is now empty, nuke it.
+			if key == nil { // currentObject is empty, nuke it.
 				sb.DeleteBucket(t.currentObject)
 				objects++
 			}
 		}
-		// Is it better to trigger a rollback when deleted is 0?
+		// It is better to trigger a rollback when nothing is deleted
+		if events == 0 && objects == 0 {
+			return NoDeletes
+		}
 		return nil
 	})
 	return
