@@ -737,8 +737,16 @@ func TestTableExpirationSweep(t *testing.T) {
 		assert.Equal(t, events, 300)
 		assert.Equal(t, objects, 5)
 		assert.Equal(t, swept, SweepBatchSize)
-		var stats = table.Stats(false)
-		assert.Equal(t, stats.Buckets, 5)
+		var stats, _ = table.Stats(false)
+		assert.Equal(t, stats.Buckets, 5+table.ShardCount())
+		assert.Equal(t, stats.KeyCount, 5+250)
+		// one more sweep round
+		swept, events, objects = table.SweepNextBatch(expiration)
+		assert.Equal(t, events, 0)
+		assert.Equal(t, objects, 0)
+		assert.Equal(t, swept, SweepBatchSize)
+		stats, _ = table.Stats(false)
+		assert.Equal(t, stats.Buckets, 5+table.ShardCount())
 		assert.Equal(t, stats.KeyCount, 5+250)
 	})
 }
