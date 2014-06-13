@@ -170,6 +170,9 @@ func (s *Server) ListenAndServe(shutdownChannel chan bool) error {
 	s.logger.Printf("Sky v%s is now listening on http://localhost%s\n", sky.Version, s.httpServer.Addr)
 
 	if s.expiration != 0 {
+		// GOROUTINE running continuous expiration sweeps across all tables.
+		// The sweeps are done in batches of up to 1000 objects and in round-robin fashion
+		// to keep making progress on all tables.
 		go func() {
 			for {
 				var tables, err = s.Tables()
@@ -183,9 +186,11 @@ func (s *Server) ListenAndServe(shutdownChannel chan bool) error {
 						s.logger.Printf("EXPIRATION Sweeper Error: %s", err)
 						break
 					}
+					var s1, _ = t.Stats(false)
 					var swept, events, objects = t.SweepNextBatch(s.expiration)
-					if events > 0 {
-						s.logger.Printf("EXPIRATION: table=%s, swept=%d, events=%d, objects=%d", t.Name(), swept, events, objects)
+					var s2, _ = t.Stats(false)
+					if events > 0 || objects > 0 {
+						s.logger.Printf("EXPIRATION: table=%s, swept=%d, events=%d, objects=%default BEFORE: keys=%d, buckets=%d AFTER: keys=%d, buckets=%d", t.Name(), swept, events, objects, s1.KeyCount, s1.Buckets, s2.KeyCount, s2.Buckets)
 					}
 				}
 			}
