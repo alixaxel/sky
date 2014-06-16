@@ -39,6 +39,7 @@ func init() {
 	flag.UintVar(&config.Port, "port", config.Port, "the port to listen on")
 	flag.UintVar(&config.Port, "p", config.Port, "the port to listen on")
 	flag.StringVar(&config.DataPath, "data-path", config.DataPath, "the data directory")
+	flag.DurationVar(&config.DataExpiration, "data-expiration", config.DataExpiration, "the data expiration period")
 	flag.StringVar(&config.PidPath, "pid-path", config.PidPath, "the path to the pid file")
 	flag.StringVar(&configPath, "config", "", "the path to the config file")
 	flag.UintVar(&config.StreamFlushThreshold, "stream-flush-threshold", config.StreamFlushThreshold, "the maximum number of events (per table) in event stream before flush")

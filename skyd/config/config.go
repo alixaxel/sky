@@ -3,6 +3,7 @@ package config
 import (
 	"github.com/BurntSushi/toml"
 	"io"
+	"time"
 )
 
 //------------------------------------------------------------------------------
@@ -28,13 +29,14 @@ const (
 
 // The configuration for running Sky.
 type Config struct {
-	Port                 uint   `toml:"port"`
-	DataPath             string `toml:"data-path"`
-	PidPath              string `toml:"pid-path"`
-	StreamFlushThreshold uint   `toml:"stream-flush-threshold"`
-	Parallelism          uint   `toml:"parallelism"`
-	NewRelicKey          string `toml:"newrelic-key"`
-	StrictMode           bool   `toml:"strict-mode"`
+	Port                 uint          `toml:"port"`
+	DataPath             string        `toml:"data-path"`
+	DataExpiration       time.Duration `toml:"data-expiration"`
+	PidPath              string        `toml:"pid-path"`
+	StreamFlushThreshold uint          `toml:"stream-flush-threshold"`
+	Parallelism          uint          `toml:"parallelism"`
+	NewRelicKey          string        `toml:"newrelic-key"`
+	StrictMode           bool          `toml:"strict-mode"`
 }
 
 //------------------------------------------------------------------------------
