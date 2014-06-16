@@ -171,8 +171,8 @@ func (s *Server) ListenAndServe(shutdownChannel chan bool) error {
 
 	if s.expiration != 0 {
 		// GOROUTINE running continuous expiration sweeps across all tables.
-		// The sweeps are done in batches of up to 1000 objects and in round-robin fashion
-		// to keep making progress on all tables.
+		// The sweeps are done in batches of up to db.SweepBatchSize objects
+		// in round-robin fashion to keep making progress on all tables.
 		go func() {
 			for {
 				var tables, err = s.Tables()
