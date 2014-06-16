@@ -1173,7 +1173,7 @@ func (e *ExecutionEngine) SetBucket(b *bolt.Bucket) {
 	defer e.mutex.Unlock()
 
 	info := b.Tx().DB().Info()
-	C.bolt_cursor_init(&e.cursor.object_cursor, unsafe.Pointer(&info.Data[0]), C.size_t(info.PageSize), C.pgid(b.Root()))
+	C.bolt_cursor_init(&e.cursor.object_cursor, unsafe.Pointer(info.Data), C.size_t(info.PageSize), C.pgid(b.Root()))
 }
 
 //------------------------------------------------------------------------------
