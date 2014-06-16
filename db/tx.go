@@ -187,8 +187,6 @@ func (tx *Tx) DeleteProperty(name string) error {
 
 // Event returns a single event for an object at a given timestamp.
 func (tx *Tx) Event(id string, timestamp time.Time) (*Event, error) {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	if !tx.Table.opened() {
 		return nil, fmt.Errorf("table not open: %s", tx.Table.name)
 	}
@@ -205,8 +203,6 @@ func (tx *Tx) Event(id string, timestamp time.Time) (*Event, error) {
 
 // Events returns all events for an object in chronological order.
 func (tx *Tx) Events(id string) ([]*Event, error) {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	if !tx.Table.opened() {
 		return nil, fmt.Errorf("table not open: %s", tx.Table.name)
 	}
@@ -303,8 +299,6 @@ func (tx *Tx) getRawEvents(id string) ([]*rawEvent, error) {
 
 // InsertEvent inserts an event for an object.
 func (tx *Tx) InsertEvent(id string, event *Event) error {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	if !tx.Table.opened() {
 		return fmt.Errorf("table not open: %s", tx.Table.name)
 	}
@@ -313,8 +307,6 @@ func (tx *Tx) InsertEvent(id string, event *Event) error {
 
 // InsertEvents inserts multiple events for an object.
 func (tx *Tx) InsertEvents(id string, events []*Event) error {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	if !tx.Table.opened() {
 		return fmt.Errorf("table not open: %s", tx.Table.name)
 	}
@@ -328,8 +320,6 @@ func (tx *Tx) InsertEvents(id string, events []*Event) error {
 
 // InsertObjects inserts multiple sets of events for different objects.
 func (tx *Tx) InsertObjects(objects map[string][]*Event) error {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	if !tx.Table.opened() {
 		return fmt.Errorf("table not open: %s", tx.Table.name)
 	}
@@ -385,8 +375,6 @@ func (tx *Tx) insertEvent(id string, e *Event) error {
 
 // DeleteEvent removes a single event for an object at a given timestamp.
 func (tx *Tx) DeleteEvent(id string, timestamp time.Time) error {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	if !tx.Table.opened() {
 		return fmt.Errorf("table not open: %s", tx.Table.name)
 	}
@@ -414,8 +402,6 @@ func (tx *Tx) DeleteEvent(id string, timestamp time.Time) error {
 
 // DeleteEvents removes all events for an object.
 func (tx *Tx) DeleteEvents(id string) error {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	if !tx.Table.opened() {
 		return fmt.Errorf("table not open: %s", tx.Table.name)
 	}
@@ -445,8 +431,6 @@ func (tx *Tx) Keys() []string {
 
 // Factorize converts a factor property value to its integer index representation.
 func (tx *Tx) Factorize(propertyID int, value string) (int, error) {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	return tx.factorize(propertyID, value, false)
 }
 
@@ -520,8 +504,6 @@ func (tx *Tx) addFactor(propertyID int, value string) (int, error) {
 
 // Defactorize converts a factor index to its actual value.
 func (tx *Tx) Defactorize(propertyID int, index int) (string, error) {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	return tx.defactorize(propertyID, index)
 }
 
