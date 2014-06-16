@@ -129,7 +129,7 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 			// and delete everything along the way.
 			for eventKey, _ = oc.First(); eventKey != nil && bytes.Compare(eventKey, bound) < 0; eventKey, _ = oc.Next() {
 				// This should be replaced with a more efficient oc.Delete()
-				ob.Delete(eventKey)
+				oc.Delete()
 				events++
 			}
 			if eventKey == nil { // current object is empty, nuke it.
