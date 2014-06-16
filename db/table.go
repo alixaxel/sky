@@ -128,7 +128,6 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 			// Now iterate over the events from the begining until event timestamp reaches the bound
 			// and delete everything along the way.
 			for eventKey, _ = oc.First(); eventKey != nil && bytes.Compare(eventKey, bound) < 0; eventKey, _ = oc.Next() {
-				// This should be replaced with a more efficient oc.Delete()
 				oc.Delete()
 				events++
 			}
