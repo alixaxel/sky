@@ -104,32 +104,35 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 		var sb = tx.Bucket(shardDBName(t.currentShard))
 		var sc = sb.Cursor()
 		for ; swept < SweepBatchSize && events < SweepBatchSize; swept += 1 {
+			var objectKey []byte
 			if t.currentObject == nil {
-				t.currentObject, _ = sc.First()
+				objectKey, _ = sc.First()
 			} else {
 				sc.Seek(t.currentObject)
-				t.currentObject, _ = sc.Next()
+				objectKey, _ = sc.Next()
 			}
 			// If current shard is exhausted, move to the next one.
-			if t.currentObject == nil {
+			if objectKey == nil {
 				// If this was the last shard, roll over to the first shard.
 				t.currentShard = (t.currentShard + 1) % t.ShardCount()
+				t.currentObject = nil
 				sb = tx.Bucket(shardDBName(t.currentShard))
 				sc = sb.Cursor()
 				continue // Hitting the end of the shard counts as an object sweep too.
 			}
-			var ob = sb.Bucket(t.currentObject)
+			// Clone the key as it needs to outlive its transaction.
+			t.currentObject = append([]byte(nil), objectKey...)
+			var ob = sb.Bucket(objectKey)
 			var oc = ob.Cursor()
-			var key []byte
+			var eventKey []byte
 			// Now iterate over the events from the begining until event timestamp reaches the bound
 			// and delete everything along the way.
-			for key, _ = oc.First(); key != nil && bytes.Compare(key, bound) < 0; key, _ = oc.Next() {
-				// This should be replaced with a more efficient oc.Delete()
-				ob.Delete(key)
+			for eventKey, _ = oc.First(); eventKey != nil && bytes.Compare(eventKey, bound) < 0; eventKey, _ = oc.Next() {
+				oc.Delete()
 				events++
 			}
-			if key == nil { // currentObject is empty, nuke it.
-				sb.DeleteBucket(t.currentObject)
+			if eventKey == nil { // current object is empty, nuke it.
+				sb.DeleteBucket(objectKey)
 				objects++
 			}
 		}
