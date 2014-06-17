@@ -707,6 +707,8 @@ func TestTableStats(t *testing.T) {
 		assert.Equal(t, stats.Depth, 2)
 		assert.Equal(t, stats.LeafAllocated, 4096)
 		assert.Equal(t, stats.LeafInUse, 104)
+		assert.Equal(t, stats.FreePages, 2)
+		assert.Equal(t, stats.FreelistInUse, 32)
 		assert.Equal(t, stats.Buckets, 18)
 		assert.Equal(t, stats.InlineBuckets, 17)
 		assert.Equal(t, stats.InlineBucketInUse, 473)
