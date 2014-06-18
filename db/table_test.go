@@ -705,11 +705,13 @@ func TestTableStats(t *testing.T) {
 		assert.Equal(t, stats.KeyCount, 3)
 		assert.Equal(t, stats.LeafPages, 1)
 		assert.Equal(t, stats.Depth, 2)
-		assert.Equal(t, stats.LeafAllocated, 4096)
-		assert.Equal(t, stats.LeafInUse, 104)
+		assert.Equal(t, stats.LeafAlloc, 4096)
+		assert.Equal(t, stats.LeafInuse, 104)
+		assert.Equal(t, stats.FreePages, 2)
+		assert.Equal(t, stats.FreelistInuse, 32)
 		assert.Equal(t, stats.Buckets, 18)
 		assert.Equal(t, stats.InlineBuckets, 17)
-		assert.Equal(t, stats.InlineBucketInUse, 473)
+		assert.Equal(t, stats.InlineBucketsInuse, 473)
 	})
 }
 

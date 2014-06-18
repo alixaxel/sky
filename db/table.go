@@ -49,21 +49,25 @@ type TableStats struct {
 	BranchOverflow int `json:"branchOverflow"`
 	LeafPages      int `json:"leafPages"`
 	LeafOverflow   int `json:"leafOverflow"`
+	FreePages      int `json:"freePages"`
 
 	// Tree statistics
 	KeyCount int `json:"keyCount"`
 	Depth    int `json:"depth"`
 
 	// Page size utilization
-	BranchAllocated int `json:"branchAlloc"`
-	BranchInUse     int `json:"branchInuse"`
-	LeafAllocated   int `json:"leafAlloc"`
-	LeafInUse       int `json:"leafInuse"`
+	BranchAlloc   int `json:"branchAlloc"`
+	BranchInuse   int `json:"branchInuse"`
+	LeafAlloc     int `json:"leafAlloc"`
+	LeafInuse     int `json:"leafInuse"`
+	FreeAlloc     int `json:"freeAlloc"`
+	FreelistInuse int `json:"freelistInuse"`
+	FreelistAlloc int `json:"freelistAlloc"`
 
 	// Bucket statistics
-	Buckets           int `json:"buckets"`
-	InlineBuckets     int `json:"inlineBuckets"`
-	InlineBucketInUse int `json:"inlineBucketInuse"`
+	Buckets            int `json:"buckets"`
+	InlineBuckets      int `json:"inlineBuckets"`
+	InlineBucketsInuse int `json:"inlineBucketInuse"`
 }
 
 // Table represents a collection of objects.
@@ -158,20 +162,25 @@ func (t *Table) Stats(all bool) (*TableStats, error) {
 			}
 			return nil
 		})
-
+		var dbs = t.db.Stats()
+		var pageSize = t.db.Info().PageSize
 		stats.BranchPages = s.BranchPageN
 		stats.BranchOverflow = s.BranchOverflowN
 		stats.LeafPages = s.LeafPageN
 		stats.LeafOverflow = s.LeafOverflowN
+		stats.FreePages = dbs.FreePageN
 		stats.KeyCount = s.KeyN
 		stats.Depth = s.Depth
-		stats.BranchAllocated = s.BranchAlloc
-		stats.BranchInUse = s.BranchInuse
-		stats.LeafAllocated = s.LeafAlloc
-		stats.LeafInUse = s.LeafInuse
+		stats.BranchAlloc = s.BranchAlloc
+		stats.BranchInuse = s.BranchInuse
+		stats.LeafAlloc = s.LeafAlloc
+		stats.LeafInuse = s.LeafInuse
+		stats.FreeAlloc = dbs.FreeAlloc
+		stats.FreelistInuse = dbs.FreelistInuse
+		stats.FreelistAlloc = ((dbs.FreelistInuse-1)/pageSize + 1) * pageSize
 		stats.Buckets = s.BucketN
 		stats.InlineBuckets = s.InlineBucketN
-		stats.InlineBucketInUse = s.InlineBucketInuse
+		stats.InlineBucketsInuse = s.InlineBucketInuse
 
 		return nil
 	})
