@@ -56,18 +56,18 @@ type TableStats struct {
 	Depth    int `json:"depth"`
 
 	// Page size utilization
-	BranchAllocated int `json:"branchAlloc"`
-	BranchInUse     int `json:"branchInuse"`
-	LeafAllocated   int `json:"leafAlloc"`
-	LeafInUse       int `json:"leafInuse"`
-	FreeAlloc       int `json:"freeAlloc"`
-	FreelistInUse   int `json:"freelistInuse"`
-	FreelistAlloc   int `json:"freelistAlloc"`
+	BranchAlloc   int `json:"branchAlloc"`
+	BranchInuse   int `json:"branchInuse"`
+	LeafAlloc     int `json:"leafAlloc"`
+	LeafInuse     int `json:"leafInuse"`
+	FreeAlloc     int `json:"freeAlloc"`
+	FreelistInuse int `json:"freelistInuse"`
+	FreelistAlloc int `json:"freelistAlloc"`
 
 	// Bucket statistics
-	Buckets           int `json:"buckets"`
-	InlineBuckets     int `json:"inlineBuckets"`
-	InlineBucketInUse int `json:"inlineBucketInuse"`
+	Buckets            int `json:"buckets"`
+	InlineBuckets      int `json:"inlineBuckets"`
+	InlineBucketsInuse int `json:"inlineBucketInuse"`
 }
 
 // Table represents a collection of objects.
@@ -171,16 +171,16 @@ func (t *Table) Stats(all bool) (*TableStats, error) {
 		stats.FreePages = dbs.FreelistN
 		stats.KeyCount = s.KeyN
 		stats.Depth = s.Depth
-		stats.BranchAllocated = s.BranchAlloc
-		stats.BranchInUse = s.BranchInuse
-		stats.LeafAllocated = s.LeafAlloc
-		stats.LeafInUse = s.LeafInuse
+		stats.BranchAlloc = s.BranchAlloc
+		stats.BranchInuse = s.BranchInuse
+		stats.LeafAlloc = s.LeafAlloc
+		stats.LeafInuse = s.LeafInuse
 		stats.FreeAlloc = dbs.FreelistN * pageSize
-		stats.FreelistInUse = dbs.FreelistAlloc
+		stats.FreelistInuse = dbs.FreelistAlloc
 		stats.FreelistAlloc = (dbs.FreelistAlloc/pageSize + 1) * pageSize
 		stats.Buckets = s.BucketN
 		stats.InlineBuckets = s.InlineBucketN
-		stats.InlineBucketInUse = s.InlineBucketInuse
+		stats.InlineBucketsInuse = s.InlineBucketInuse
 
 		return nil
 	})
