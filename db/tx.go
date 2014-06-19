@@ -55,8 +55,6 @@ func (tx *Tx) PropertiesByID() (map[int]*Property, error) {
 
 // Property returns a single property from the table with the given name.
 func (tx *Tx) Property(name string) (*Property, error) {
-	tx.Table.Lock()
-	defer tx.Table.Unlock()
 	if !tx.Table.opened() {
 		return nil, fmt.Errorf("table not open: %s", tx.Table.name)
 	}

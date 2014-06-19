@@ -143,6 +143,10 @@ func (db *DB) OpenTable(name string) (*Table, error) {
 	db.Lock()
 	defer db.Unlock()
 
+	if t, ok := db.tables[name]; ok {
+		return t, nil
+	}
+
 	if db.path == "" {
 		return nil, ErrDatabaseNotOpen
 	} else if name == "" {
