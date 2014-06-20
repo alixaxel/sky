@@ -11,6 +11,8 @@ data-path="/home/data"
 pid-path = "/home/pid"
 stream-flush-threshold = 500
 newrelic-key = "longinscrutablestringofcharacters"
+statsd = "127.0.0.1:8125"
+statsd-base = "myapp.skydb"
 `
 
 // Decode a configuration file.
@@ -30,5 +32,9 @@ func TestDecode(t *testing.T) {
 		t.Fatalf("Invalid no stream flush threshold option: %v", config.StreamFlushThreshold)
 	} else if config.NewRelicKey != "longinscrutablestringofcharacters" {
 		t.Fatalf("Invalid New Relic key option: %v", config.NewRelicKey)
+	} else if config.StatsD != "127.0.0.1:8125" {
+		t.Fatalf("Invalid statsd address: %v", config.StatsD)
+	} else if config.StatsDBaseKey != "myapp.skydb" {
+		t.Fatalf("Invalid statsd address: %v", config.StatsDBaseKey)
 	}
 }

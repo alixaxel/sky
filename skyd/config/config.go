@@ -19,6 +19,7 @@ const (
 	DefaultStreamFlushThreshold = 1000
 	DefaultParallelism          = 0 // zero means set it to number of CPUs
 	DefaultStrictMode           = false
+	DefaultStatsDBaseKey        = "skydb"
 )
 
 //------------------------------------------------------------------------------
@@ -37,6 +38,8 @@ type Config struct {
 	Parallelism          uint          `toml:"parallelism"`
 	NewRelicKey          string        `toml:"newrelic-key"`
 	StrictMode           bool          `toml:"strict-mode"`
+	StatsD               string        `toml:"statsd"`
+	StatsDBaseKey        string        `toml:"statsd-base"`
 }
 
 //------------------------------------------------------------------------------
@@ -54,6 +57,7 @@ func NewConfig() *Config {
 		StreamFlushThreshold: DefaultStreamFlushThreshold,
 		Parallelism:          DefaultParallelism,
 		StrictMode:           DefaultStrictMode,
+		StatsDBaseKey:        DefaultStatsDBaseKey,
 	}
 }
 

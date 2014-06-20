@@ -46,6 +46,8 @@ func init() {
 	flag.UintVar(&config.Parallelism, "parallelism", config.Parallelism, "the number of cores to use, ie gomaxprocs")
 	flag.StringVar(&config.NewRelicKey, "newrelic-key", "", "New Relic license key")
 	flag.BoolVar(&config.StrictMode, "strict-mode", config.StrictMode, "Strict mode")
+	flag.StringVar(&config.StatsD, "statsd", config.StatsD, "ip/port of StatsD daemon")
+	flag.StringVar(&config.StatsDBaseKey, "statsd-base", config.StatsD, "the base key to use for StatsD metrics")
 }
 
 //--------------------------------------
