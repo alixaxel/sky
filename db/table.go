@@ -256,7 +256,7 @@ func (t *Table) open() error {
 	}
 
 	// Create Bolt database.
-	db, err := bolt.Open(t.path, 0600)
+	db, err := bolt.Open(t.path, 0600, &bolt.Options{Timeout: 1 * time.Second})
 	if err != nil {
 		return fmt.Errorf("table open: %s", err)
 	}
