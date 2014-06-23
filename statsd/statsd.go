@@ -1,9 +1,7 @@
-package server
+package statsd
 
 import (
-	"fmt"
 	"github.com/ooyala/go-dogstatsd"
-	"time"
 )
 
 const (
@@ -27,23 +25,23 @@ func Configure(addr string, base string, tags []string) error {
 	return nil
 }
 
-func Gauge(subkey string, value float64, tags map[string]string) error {
+func Gauge(subkey string, value float64, tags []string) error {
 	if StatsDClient == nil {
 		return nil
 	}
-	return StatsDClient.Gauge(BaseKey+subkey, value, convertTags(tags), DefaultSampleRate)
+	return StatsDClient.Gauge(BaseKey+subkey, value, tags, DefaultSampleRate)
 }
 
-func Count(subkey string, value int64, tags map[string]string) error {
+func Count(subkey string, value int64, tags []string) error {
 	if StatsDClient == nil {
 		return nil
 	}
-	return StatsDClient.Count(BaseKey+subkey, value, convertTags(tags), DefaultSampleRate)
+	return StatsDClient.Count(BaseKey+subkey, value, tags, DefaultSampleRate)
 }
 
-func Histogram(subkey string, value float64, tags map[string]string) error {
+func Histogram(subkey string, value float64, tags []string) error {
 	if StatsDClient == nil {
 		return nil
 	}
-	return StatsDClient.Histogram(BaseKey+subkey, value, convertTags(tags), DefaultSampleRate)
+	return StatsDClient.Histogram(BaseKey+subkey, value, tags, DefaultSampleRate)
 }
