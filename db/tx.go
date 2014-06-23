@@ -7,6 +7,7 @@ import (
 	"time"
 
 	"github.com/boltdb/bolt"
+	"github.com/skydb/sky/statsd"
 )
 
 // Tx represents a transaction.
@@ -245,7 +246,7 @@ func (tx *Tx) getRawEvent(id string, timestamp int64) (*rawEvent, error) {
 		return nil, nil
 	}
 	stat.count++
-	stat.apply(&tx.Table.stat.Event.Fetch.Count, &tx.Table.stat.Event.Fetch.Duration)
+	stat.apply(&tx.Table.stat.Event.Fetch.Count, &tx.Table.stat.Event.Fetch.Duration, "event.fetch", tx.Table)
 
 	// Unmarshal bytes into a raw event.
 	stat = bench()
@@ -254,7 +255,7 @@ func (tx *Tx) getRawEvent(id string, timestamp int64) (*rawEvent, error) {
 		return nil, err
 	}
 	stat.count++
-	stat.apply(&tx.Table.stat.Event.Unmarshal.Count, &tx.Table.stat.Event.Unmarshal.Duration)
+	stat.apply(&tx.Table.stat.Event.Unmarshal.Count, &tx.Table.stat.Event.Unmarshal.Duration, "event.unmarshal", tx.Table)
 
 	return e, nil
 }
@@ -278,7 +279,7 @@ func (tx *Tx) getRawEvents(id string) ([]*rawEvent, error) {
 		return nil
 	})
 	stat.count += len(slices)
-	stat.apply(&tx.Table.stat.Event.Fetch.Count, &tx.Table.stat.Event.Fetch.Duration)
+	stat.apply(&tx.Table.stat.Event.Fetch.Count, &tx.Table.stat.Event.Fetch.Duration, "event.fetch", tx.Table)
 
 	// Unmarshal each slice into a raw event.
 	stat = bench()
@@ -291,7 +292,7 @@ func (tx *Tx) getRawEvents(id string) ([]*rawEvent, error) {
 		events = append(events, e)
 	}
 	stat.count += len(events)
-	stat.apply(&tx.Table.stat.Event.Unmarshal.Count, &tx.Table.stat.Event.Unmarshal.Duration)
+	stat.apply(&tx.Table.stat.Event.Unmarshal.Count, &tx.Table.stat.Event.Unmarshal.Duration, "event.unmarshal", tx.Table)
 	return events, nil
 }
 
@@ -355,7 +356,7 @@ func (tx *Tx) insertEvent(id string, e *Event) error {
 		return err
 	}
 	stat.count++
-	stat.apply(&tx.Table.stat.Event.Marshal.Count, &tx.Table.stat.Event.Marshal.Duration)
+	stat.apply(&tx.Table.stat.Event.Marshal.Count, &tx.Table.stat.Event.Marshal.Duration, "event.marshal", tx.Table)
 
 	// Insert key/value.
 	stat = bench()
@@ -367,7 +368,7 @@ func (tx *Tx) insertEvent(id string, e *Event) error {
 	}
 
 	stat.count++
-	stat.apply(&tx.Table.stat.Event.Insert.Count, &tx.Table.stat.Event.Insert.Duration)
+	stat.apply(&tx.Table.stat.Event.Insert.Count, &tx.Table.stat.Event.Insert.Duration, "event.insert", tx.Table)
 	return nil
 }
 
@@ -394,7 +395,7 @@ func (tx *Tx) DeleteEvent(id string, timestamp time.Time) error {
 	}
 
 	stat.count++
-	stat.apply(&tx.Table.stat.Event.Delete.Count, &tx.Table.stat.Event.Delete.Duration)
+	stat.apply(&tx.Table.stat.Event.Delete.Count, &tx.Table.stat.Event.Delete.Duration, "event.delete", tx.Table)
 	return nil
 }
 
@@ -443,6 +444,7 @@ func (tx *Tx) factorize(propertyID int, value string, createIfNotExists bool) (i
 	// Check the LRU first.
 	if sequence, ok := tx.Table.caches[propertyID].getValue(value); ok {
 		tx.Table.stat.Event.Factorize.CacheHit.Count++
+		statsd.Count("event.factorize.cache.hit", int64(tx.Table.stat.Event.Factorize.CacheHit.Count), tx.Table.ddTags())
 		return sequence, nil
 	}
 
@@ -454,11 +456,11 @@ func (tx *Tx) factorize(propertyID int, value string, createIfNotExists bool) (i
 		val = int(binary.BigEndian.Uint64(data))
 	}
 	if val != 0 {
-		stat.apply(&tx.Table.stat.Event.Factorize.FetchHit.Count, &tx.Table.stat.Event.Factorize.FetchHit.Duration)
+		stat.apply(&tx.Table.stat.Event.Factorize.FetchHit.Count, &tx.Table.stat.Event.Factorize.FetchHit.Duration, "event.factorize.fetch.hit", tx.Table)
 		tx.Table.caches[propertyID].add(value, val)
 		return val, nil
 	}
-	stat.apply(&tx.Table.stat.Event.Factorize.FetchMiss.Count, &tx.Table.stat.Event.Factorize.FetchMiss.Duration)
+	stat.apply(&tx.Table.stat.Event.Factorize.FetchMiss.Count, &tx.Table.stat.Event.Factorize.FetchMiss.Duration, "event.factorize.fetch.miss", tx.Table)
 
 	// Create a new factor if requested.
 	if createIfNotExists {
@@ -494,7 +496,7 @@ func (tx *Tx) addFactor(propertyID int, value string) (int, error) {
 	tx.Table.caches[propertyID].add(value, int(index))
 
 	stat.count++
-	stat.apply(&tx.Table.stat.Event.Factorize.Create.Count, &tx.Table.stat.Event.Factorize.Create.Duration)
+	stat.apply(&tx.Table.stat.Event.Factorize.Create.Count, &tx.Table.stat.Event.Factorize.Create.Duration, "event.factorize.create", tx.Table)
 
 	return int(index), nil
 }
@@ -514,6 +516,7 @@ func (tx *Tx) defactorize(propertyID int, index int) (string, error) {
 	// Check the cache first.
 	if key, ok := tx.Table.caches[propertyID].getKey(index); ok {
 		tx.Table.stat.Event.Defactorize.CacheHit.Count++
+		statsd.Count("event.defactorize.cache.hit", int64(tx.Table.stat.Event.Defactorize.CacheHit.Count), tx.Table.ddTags())
 		return key, nil
 	}
 
@@ -521,10 +524,10 @@ func (tx *Tx) defactorize(propertyID int, index int) (string, error) {
 	stat.count++
 	var data = tx.Bucket(factorDBName(propertyID)).Get(reverseFactorKey(index))
 	if data == nil {
-		stat.apply(&tx.Table.stat.Event.Defactorize.FetchMiss.Count, &tx.Table.stat.Event.Defactorize.FetchMiss.Duration)
+		stat.apply(&tx.Table.stat.Event.Defactorize.FetchMiss.Count, &tx.Table.stat.Event.Defactorize.FetchMiss.Duration, "event.defactorize.fetch.miss", tx.Table)
 		return "", fmt.Errorf("factor not found: %d: %d", propertyID, index)
 	}
-	stat.apply(&tx.Table.stat.Event.Defactorize.FetchHit.Count, &tx.Table.stat.Event.Defactorize.FetchHit.Duration)
+	stat.apply(&tx.Table.stat.Event.Defactorize.FetchHit.Count, &tx.Table.stat.Event.Defactorize.FetchHit.Duration, "event.defactorize.fetch.hit", tx.Table)
 
 	// Add to cache.
 	tx.Table.caches[propertyID].add(string(data), index)

@@ -13,6 +13,7 @@ import (
 
 	"github.com/boltdb/bolt"
 	"github.com/skydb/sky/hash"
+	"github.com/skydb/sky/statsd"
 	"github.com/ugorji/go/codec"
 )
 
@@ -91,6 +92,8 @@ type Table struct {
 	// expiration sweep state
 	currentShard  int    // track index of currently swept shard
 	currentObject []byte // track the key of last swept object
+
+	ddTagsCache []string // caches DataDog tags
 }
 
 // SweepNextObject is used internally to implement automatic expiration of events
@@ -122,6 +125,7 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 				t.currentObject = nil
 				sb = tx.Bucket(shardDBName(t.currentShard))
 				sc = sb.Cursor()
+				statsd.Count("expiration.rollover", 1, t.ddTags())
 				continue // Hitting the end of the shard counts as an object sweep too.
 			}
 			// Clone the key as it needs to outlive its transaction.
@@ -140,9 +144,17 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 				objects++
 			}
 		}
+		statsd.Count("expiration.sweep", 1, t.ddTags())
+
 		// It is better to trigger a rollback when nothing is deleted
 		if events == 0 && objects == 0 {
 			return NoDeletes
+		}
+		if events > 0 {
+			statsd.Count("expiration.events", int64(events), t.ddTags())
+		}
+		if objects > 0 {
+			statsd.Count("expiration.objects", int64(objects), t.ddTags())
 		}
 		return nil
 	})
@@ -420,6 +432,14 @@ func (t *Table) shardIndex(id string) int {
 	return int(hash.Local(id)) % t.shardCount
 }
 
+func (t *Table) ddTags() []string {
+	if t.ddTagsCache != nil {
+		return t.ddTagsCache
+	}
+	t.ddTagsCache = []string{"table:" + t.name}
+	return t.ddTagsCache
+}
+
 // shardDBName returns the name of the shard table.
 func shardDBName(index int) []byte {
 	return []byte(fmt.Sprintf("shards/%d", index))
@@ -510,9 +530,10 @@ func (s *stat) since() time.Duration {
 }
 
 // apply increments the count and duration based on the stat.
-func (s *stat) apply(count *int, duration *time.Duration) {
+func (s *stat) apply(count *int, duration *time.Duration, key string, table *Table) {
 	*count += s.count
 	*duration += time.Since(s.time)
+	statsd.Histogram(key, float64(*duration)/float64(*count), table.ddTags())
 }
 
 // bench begins a timed stat counter.
