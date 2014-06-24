@@ -93,7 +93,8 @@ type Table struct {
 	currentShard  int    // track index of currently swept shard
 	currentObject []byte // track the key of last swept object
 
-	ddTagsCache []string // caches DataDog tags
+	ddTagsCache []string    // caches DataDog tags
+	boltStats   *bolt.Stats // caches previous snapshot of bolt stats
 }
 
 // SweepNextObject is used internally to implement automatic expiration of events
@@ -366,9 +367,14 @@ func (t *Table) View(fn func(*Tx) error) error {
 
 // Update executes a function in the context of a writable transaction.
 func (t *Table) Update(fn func(*Tx) error) error {
-	return t.db.Update(func(tx *bolt.Tx) error {
+	var err error
+	err = t.db.Update(func(tx *bolt.Tx) error {
 		return fn(&Tx{tx, t})
 	})
+	var stats = t.db.Stats()
+	t.ddEmitStats(stats.Sub(t.boltStats))
+	t.boltStats = &stats
+	return err
 }
 
 // MaxTransientID returns the largest transient property identifier.
@@ -438,6 +444,31 @@ func (t *Table) ddTags() []string {
 	}
 	t.ddTagsCache = []string{"table:" + t.name}
 	return t.ddTagsCache
+}
+
+func (t *Table) ddEmitStats(stats bolt.Stats) {
+	var tags = t.ddTags()
+	statsd.Gauge("bolt.pages.free", float64(stats.FreePageN), tags)
+	statsd.Gauge("bolt.pages.pending", float64(stats.PendingPageN), tags)
+	statsd.Gauge("bolt.pages.free.alloc", float64(stats.FreeAlloc), tags)
+	statsd.Gauge("bolt.pages.freelist.inuse", float64(stats.FreeAlloc), tags)
+	statsd.Count("bolt.txn.total", int64(stats.TxN), tags)
+	statsd.Gauge("bolt.txn.open", float64(stats.OpenTxN), tags)
+	statsd.Count("bolt.txn.page.count", int64(stats.TxStats.PageCount), tags)
+	statsd.Count("bolt.txn.page.alloc", int64(stats.TxStats.PageAlloc), tags)
+	statsd.Count("bolt.txn.cursor.count", int64(stats.TxStats.CursorCount), tags)
+	statsd.Count("bolt.txn.node.count", int64(stats.TxStats.NodeCount), tags)
+	statsd.Count("bolt.txn.node.deref", int64(stats.TxStats.NodeDeref), tags)
+	statsd.Count("bolt.txn.node.rebalance.count", int64(stats.TxStats.Rebalance), tags)
+	statsd.Count("bolt.txn.node.rebalance.time", int64(stats.TxStats.RebalanceTime), tags)
+	statsd.Histogram("bolt.txn.node.rebalance.period", float64(stats.TxStats.RebalanceTime)/float64(stats.TxStats.Rebalance), tags)
+	statsd.Count("bolt.txn.node.split", int64(stats.TxStats.Split), tags)
+	statsd.Count("bolt.txn.node.spill.count", int64(stats.TxStats.Spill), tags)
+	statsd.Count("bolt.txn.node.spill.time", int64(stats.TxStats.SpillTime), tags)
+	statsd.Histogram("bolt.txn.node.spill.period", float64(stats.TxStats.SpillTime)/float64(stats.TxStats.Spill), tags)
+	statsd.Count("bolt.txn.write.count", int64(stats.TxStats.Write), tags)
+	statsd.Count("bolt.txn.write.time", int64(stats.TxStats.WriteTime), tags)
+	statsd.Histogram("bolt.txn.write.period", float64(stats.TxStats.WriteTime)/float64(stats.TxStats.Write), tags)
 }
 
 // shardDBName returns the name of the shard table.
