@@ -279,6 +279,10 @@ func (t *Table) open() error {
 	db.StrictMode = t.StrictMode
 	t.db = db
 
+	// Initialize stats
+	var stats bolt.Stats = t.db.Stats()
+	t.boltStats = &stats
+
 	// Initialize schema.
 	err = t.Update(func(tx *Tx) error {
 		// Create meta bucket.
@@ -373,13 +377,7 @@ func (t *Table) Update(fn func(*Tx) error) error {
 	err = t.db.Update(func(tx *bolt.Tx) error {
 		return fn(&Tx{tx, t})
 	})
-	var stats = t.db.Stats()
-	if t.boltStats == nil {
-		t.ddEmitStats(stats)
-	} else {
-		t.ddEmitStats(stats.Sub(t.boltStats))
-	}
-	t.boltStats = &stats
+	t.ddEmitStats()
 	return err
 }
 
@@ -452,7 +450,11 @@ func (t *Table) ddTags() []string {
 	return t.ddTagsCache
 }
 
-func (t *Table) ddEmitStats(stats bolt.Stats) {
+func (t *Table) ddEmitStats() {
+	var fresh = t.db.Stats()
+	var stats = fresh.Sub(t.boltStats)
+	t.boltStats = &fresh
+
 	var tags = t.ddTags()
 	statsd.Gauge("bolt.pages.free", float64(stats.FreePageN), tags)
 	statsd.Gauge("bolt.pages.pending", float64(stats.PendingPageN), tags)
