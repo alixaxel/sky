@@ -51,6 +51,7 @@ type TableStats struct {
 	LeafPages      int `json:"leafPages"`
 	LeafOverflow   int `json:"leafOverflow"`
 	FreePages      int `json:"freePages"`
+	PendingPages   int `json:"pendingPages"`
 
 	// Tree statistics
 	KeyCount int `json:"keyCount"`
@@ -182,6 +183,7 @@ func (t *Table) Stats(all bool) (*TableStats, error) {
 		stats.LeafPages = s.LeafPageN
 		stats.LeafOverflow = s.LeafOverflowN
 		stats.FreePages = dbs.FreePageN
+		stats.PendingPages = dbs.PendingPageN
 		stats.KeyCount = s.KeyN
 		stats.Depth = s.Depth
 		stats.BranchAlloc = s.BranchAlloc
@@ -372,7 +374,11 @@ func (t *Table) Update(fn func(*Tx) error) error {
 		return fn(&Tx{tx, t})
 	})
 	var stats = t.db.Stats()
-	t.ddEmitStats(stats.Sub(t.boltStats))
+	if t.boltStats == nil {
+		t.ddEmitStats(stats)
+	} else {
+		t.ddEmitStats(stats.Sub(t.boltStats))
+	}
 	t.boltStats = &stats
 	return err
 }

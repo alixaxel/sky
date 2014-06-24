@@ -238,7 +238,7 @@ func TestServerTableStats(t *testing.T) {
 		})
 
 		resp, _ := sendTestHttpRequest("GET", "http://localhost:8586/tables/foo/stats?all=true", "application/json", "")
-		assertResponse(t, resp, 200, `{"branchPages":0,"branchOverflow":0,"leafPages":4,"leafOverflow":0,"freePages":2,`+
+		assertResponse(t, resp, 200, `{"branchPages":0,"branchOverflow":0,"leafPages":4,"leafOverflow":0,"freePages":0,"pendingPages":2,`+
 			`"keyCount":11,"depth":2,"branchAlloc":0,"branchInuse":0,"leafAlloc":16384,"leafInuse":474,`+
 			`"freeAlloc":8192,"freelistInuse":32,"freelistAlloc":4096,`+
 			`"buckets":21,"inlineBuckets":17,"inlineBucketInuse":649}`+
