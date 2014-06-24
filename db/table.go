@@ -458,7 +458,7 @@ func (t *Table) ddEmitStats() {
 	statsd.Gauge("bolt.pages.free", float64(stats.FreePageN), tags)
 	statsd.Gauge("bolt.pages.pending", float64(stats.PendingPageN), tags)
 	statsd.Gauge("bolt.pages.free.alloc", float64(stats.FreeAlloc), tags)
-	statsd.Gauge("bolt.pages.freelist.inuse", float64(stats.FreeAlloc), tags)
+	statsd.Gauge("bolt.pages.freelist.inuse", float64(stats.FreelistInuse), tags)
 	statsd.Count("bolt.txn.total", int64(stats.TxN), tags)
 	statsd.Gauge("bolt.txn.open", float64(stats.OpenTxN), tags)
 	statsd.Count("bolt.txn.page.count", int64(stats.TxStats.PageCount), tags)
