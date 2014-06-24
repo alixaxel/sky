@@ -469,7 +469,6 @@ func (tx *Tx) factorize(propertyID int, value string, createIfNotExists bool) (i
 }
 
 func (tx *Tx) addFactor(propertyID int, value string) (int, error) {
-	var index int
 	var stat = bench()
 
 	// Look up next sequence index.
@@ -481,23 +480,23 @@ func (tx *Tx) addFactor(propertyID int, value string) (int, error) {
 
 	// Store the value-to-index lookup.
 	var data = make([]byte, 8)
-	binary.BigEndian.PutUint64(data[:], uint64(index))
+	binary.BigEndian.PutUint64(data[:], index)
 	if err := b.Put(factorKey(value), data); err != nil {
 		return 0, fmt.Errorf("add factor txn put error: %s", err)
 	}
 
 	// Save the index-to-value lookup.
-	if err := b.Put(reverseFactorKey(index), []byte(value)); err != nil {
+	if err := b.Put(reverseFactorKey(int(index)), []byte(value)); err != nil {
 		return 0, fmt.Errorf("add factor put reverse error: %s", err)
 	}
 
 	// Add to cache.
-	tx.Table.caches[propertyID].add(value, index)
+	tx.Table.caches[propertyID].add(value, int(index))
 
 	stat.count++
 	stat.apply(&tx.Table.stat.Event.Factorize.Create.Count, &tx.Table.stat.Event.Factorize.Create.Duration)
 
-	return index, nil
+	return int(index), nil
 }
 
 // Defactorize converts a factor index to its actual value.
