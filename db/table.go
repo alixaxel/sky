@@ -13,6 +13,7 @@ import (
 
 	"github.com/boltdb/bolt"
 	"github.com/skydb/sky/hash"
+	"github.com/skydb/sky/statsd"
 	"github.com/ugorji/go/codec"
 )
 
@@ -50,6 +51,7 @@ type TableStats struct {
 	LeafPages      int `json:"leafPages"`
 	LeafOverflow   int `json:"leafOverflow"`
 	FreePages      int `json:"freePages"`
+	PendingPages   int `json:"pendingPages"`
 
 	// Tree statistics
 	KeyCount int `json:"keyCount"`
@@ -91,6 +93,9 @@ type Table struct {
 	// expiration sweep state
 	currentShard  int    // track index of currently swept shard
 	currentObject []byte // track the key of last swept object
+
+	ddTagsCache []string    // caches DataDog tags
+	boltStats   *bolt.Stats // caches previous snapshot of bolt stats
 }
 
 // SweepNextObject is used internally to implement automatic expiration of events
@@ -122,6 +127,7 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 				t.currentObject = nil
 				sb = tx.Bucket(shardDBName(t.currentShard))
 				sc = sb.Cursor()
+				statsd.Count("expiration.rollover", 1, t.ddTags())
 				continue // Hitting the end of the shard counts as an object sweep too.
 			}
 			// Clone the key as it needs to outlive its transaction.
@@ -140,9 +146,17 @@ func (t *Table) SweepNextBatch(expiration time.Duration) (swept, events, objects
 				objects++
 			}
 		}
+		statsd.Count("expiration.sweep", 1, t.ddTags())
+
 		// It is better to trigger a rollback when nothing is deleted
 		if events == 0 && objects == 0 {
 			return NoDeletes
+		}
+		if events > 0 {
+			statsd.Count("expiration.events", int64(events), t.ddTags())
+		}
+		if objects > 0 {
+			statsd.Count("expiration.objects", int64(objects), t.ddTags())
 		}
 		return nil
 	})
@@ -169,6 +183,7 @@ func (t *Table) Stats(all bool) (*TableStats, error) {
 		stats.LeafPages = s.LeafPageN
 		stats.LeafOverflow = s.LeafOverflowN
 		stats.FreePages = dbs.FreePageN
+		stats.PendingPages = dbs.PendingPageN
 		stats.KeyCount = s.KeyN
 		stats.Depth = s.Depth
 		stats.BranchAlloc = s.BranchAlloc
@@ -264,6 +279,10 @@ func (t *Table) open() error {
 	db.StrictMode = t.StrictMode
 	t.db = db
 
+	// Initialize stats
+	stats := t.db.Stats()
+	t.boltStats = &stats
+
 	// Initialize schema.
 	err = t.Update(func(tx *Tx) error {
 		// Create meta bucket.
@@ -354,9 +373,11 @@ func (t *Table) View(fn func(*Tx) error) error {
 
 // Update executes a function in the context of a writable transaction.
 func (t *Table) Update(fn func(*Tx) error) error {
-	return t.db.Update(func(tx *bolt.Tx) error {
+	err := t.db.Update(func(tx *bolt.Tx) error {
 		return fn(&Tx{tx, t})
 	})
+	t.ddEmitStats()
+	return err
 }
 
 // MaxTransientID returns the largest transient property identifier.
@@ -418,6 +439,43 @@ func (t *Table) copyProperties() {
 // shardIndex returns the appropriate shard for a given object id.
 func (t *Table) shardIndex(id string) int {
 	return int(hash.Local(id)) % t.shardCount
+}
+
+func (t *Table) ddTags() []string {
+	if t.ddTagsCache != nil {
+		return t.ddTagsCache
+	}
+	t.ddTagsCache = []string{"table:" + t.name}
+	return t.ddTagsCache
+}
+
+func (t *Table) ddEmitStats() {
+	var fresh = t.db.Stats()
+	var stats = fresh.Sub(t.boltStats)
+	t.boltStats = &fresh
+
+	var tags = t.ddTags()
+	statsd.Gauge("bolt.pages.free", float64(stats.FreePageN), tags)
+	statsd.Gauge("bolt.pages.pending", float64(stats.PendingPageN), tags)
+	statsd.Gauge("bolt.pages.free.alloc", float64(stats.FreeAlloc), tags)
+	statsd.Gauge("bolt.pages.freelist.inuse", float64(stats.FreeAlloc), tags)
+	statsd.Count("bolt.txn.total", int64(stats.TxN), tags)
+	statsd.Gauge("bolt.txn.open", float64(stats.OpenTxN), tags)
+	statsd.Count("bolt.txn.page.count", int64(stats.TxStats.PageCount), tags)
+	statsd.Count("bolt.txn.page.alloc", int64(stats.TxStats.PageAlloc), tags)
+	statsd.Count("bolt.txn.cursor.count", int64(stats.TxStats.CursorCount), tags)
+	statsd.Count("bolt.txn.node.count", int64(stats.TxStats.NodeCount), tags)
+	statsd.Count("bolt.txn.node.deref", int64(stats.TxStats.NodeDeref), tags)
+	statsd.Count("bolt.txn.node.rebalance.count", int64(stats.TxStats.Rebalance), tags)
+	statsd.Count("bolt.txn.node.rebalance.time", int64(stats.TxStats.RebalanceTime), tags)
+	statsd.Histogram("bolt.txn.node.rebalance.period", float64(stats.TxStats.RebalanceTime)/float64(stats.TxStats.Rebalance), tags)
+	statsd.Count("bolt.txn.node.split", int64(stats.TxStats.Split), tags)
+	statsd.Count("bolt.txn.node.spill.count", int64(stats.TxStats.Spill), tags)
+	statsd.Count("bolt.txn.node.spill.time", int64(stats.TxStats.SpillTime), tags)
+	statsd.Histogram("bolt.txn.node.spill.period", float64(stats.TxStats.SpillTime)/float64(stats.TxStats.Spill), tags)
+	statsd.Count("bolt.txn.write.count", int64(stats.TxStats.Write), tags)
+	statsd.Count("bolt.txn.write.time", int64(stats.TxStats.WriteTime), tags)
+	statsd.Histogram("bolt.txn.write.period", float64(stats.TxStats.WriteTime)/float64(stats.TxStats.Write), tags)
 }
 
 // shardDBName returns the name of the shard table.
@@ -510,9 +568,10 @@ func (s *stat) since() time.Duration {
 }
 
 // apply increments the count and duration based on the stat.
-func (s *stat) apply(count *int, duration *time.Duration) {
+func (s *stat) apply(count *int, duration *time.Duration, key string, table *Table) {
 	*count += s.count
 	*duration += time.Since(s.time)
+	statsd.Histogram(key, float64(*duration)/float64(*count), table.ddTags())
 }
 
 // bench begins a timed stat counter.

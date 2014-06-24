@@ -20,6 +20,7 @@ import (
 	"github.com/skydb/sky/db"
 	"github.com/skydb/sky/query"
 	. "github.com/skydb/sky/skyd/config"
+	"github.com/skydb/sky/statsd"
 	"github.com/yvasiyarov/gorelic"
 )
 
@@ -89,6 +90,15 @@ func NewServer(config *Config) *Server {
 		streamFlushThreshold: config.StreamFlushThreshold,
 		strictMode:           config.StrictMode,
 		expiration:           config.DataExpiration,
+	}
+
+	// Set up StatsD if the address is configured
+	if address := config.StatsD; address != "" {
+		hostname, _ := os.Hostname()
+		tags := []string{"host:" + hostname, fmt.Sprintf("port:%d", config.Port)}
+		if err := statsd.Configure(address, config.StatsDBaseKey, tags); err != nil {
+			s.logger.Printf("StatsD setup error: %s\n", err)
+		}
 	}
 
 	// Set up New Relic agent if we have a license key
