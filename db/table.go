@@ -280,7 +280,7 @@ func (t *Table) open() error {
 	t.db = db
 
 	// Initialize stats
-	var stats bolt.Stats = t.db.Stats()
+	stats := t.db.Stats()
 	t.boltStats = &stats
 
 	// Initialize schema.
@@ -373,8 +373,7 @@ func (t *Table) View(fn func(*Tx) error) error {
 
 // Update executes a function in the context of a writable transaction.
 func (t *Table) Update(fn func(*Tx) error) error {
-	var err error
-	err = t.db.Update(func(tx *bolt.Tx) error {
+	err := t.db.Update(func(tx *bolt.Tx) error {
 		return fn(&Tx{tx, t})
 	})
 	t.ddEmitStats()
