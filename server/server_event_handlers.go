@@ -6,11 +6,9 @@ import (
 	"github.com/gorilla/mux"
 	"io"
 	"net/http"
-	"os"
 	"strconv"
 	"time"
 
-	"github.com/boltdb/bolt"
 	"github.com/skydb/sky/db"
 )
 
@@ -285,11 +283,6 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		s.logger.Printf("ERR %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, `{"message":"%v", "events_written":%v}`, err, eventsWritten)
-		if err == bolt.ErrFreelistOverflow {
-			// panic for now to force a restart, we're unable to recover from this
-			// but we can't panic because net/http recovers panics
-			os.Exit(666)
-		}
 		return
 	}
 
