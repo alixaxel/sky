@@ -6,6 +6,7 @@ import (
 	"github.com/gorilla/mux"
 	"io"
 	"net/http"
+	"os"
 	"strconv"
 	"time"
 
@@ -286,7 +287,8 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		fmt.Fprintf(w, `{"message":"%v", "events_written":%v}`, err, eventsWritten)
 		if err == bolt.ErrFreelistOverflow {
 			// panic for now to force a restart, we're unable to recover from this
-			panic(err)
+			// but we can't panic because net/http recovers panics
+			os.Exit(666)
 		}
 		return
 	}
