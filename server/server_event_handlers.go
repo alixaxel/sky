@@ -9,6 +9,7 @@ import (
 	"strconv"
 	"time"
 
+	"github.com/boltdb/bolt"
 	"github.com/skydb/sky/db"
 )
 
@@ -284,6 +285,10 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, `{"message":"%v", "events_written":%v}`, err, eventsWritten)
 		return
+		if err == bolt.ErrFreelistOverflow {
+			// panic for now to force a restart, we're unable to recover from this
+			panic(err)
+		}
 	}
 
 	fmt.Fprintf(w, `{"events_written":%v}`, eventsWritten)
