@@ -284,11 +284,11 @@ func (s *Server) streamUpdateEventsHandler(w http.ResponseWriter, req *http.Requ
 		s.logger.Printf("ERR %v", err)
 		w.WriteHeader(http.StatusInternalServerError)
 		fmt.Fprintf(w, `{"message":"%v", "events_written":%v}`, err, eventsWritten)
-		return
 		if err == bolt.ErrFreelistOverflow {
 			// panic for now to force a restart, we're unable to recover from this
 			panic(err)
 		}
+		return
 	}
 
 	fmt.Fprintf(w, `{"events_written":%v}`, eventsWritten)
