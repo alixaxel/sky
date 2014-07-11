@@ -442,10 +442,12 @@ func (tx *Tx) factorize(propertyID int, value string, createIfNotExists bool) (i
 	}
 
 	// Check the LRU first.
-	if sequence, ok := tx.Table.caches[propertyID].getValue(value); ok {
-		tx.Table.stat.Event.Factorize.CacheHit.Count++
-		statsd.Count("event.factorize.cache.hit", int64(tx.Table.stat.Event.Factorize.CacheHit.Count), tx.Table.ddTags())
-		return sequence, nil
+	if c := tx.Table.caches[propertyID]; c != nil {
+		if sequence, ok := c.getValue(value); ok {
+			tx.Table.stat.Event.Factorize.CacheHit.Count++
+			statsd.Count("event.factorize.cache.hit", int64(tx.Table.stat.Event.Factorize.CacheHit.Count), tx.Table.ddTags())
+			return sequence, nil
+		}
 	}
 
 	// Find an existing factor for the value.
@@ -457,7 +459,9 @@ func (tx *Tx) factorize(propertyID int, value string, createIfNotExists bool) (i
 	}
 	if val != 0 {
 		stat.apply(&tx.Table.stat.Event.Factorize.FetchHit.Count, &tx.Table.stat.Event.Factorize.FetchHit.Duration, "event.factorize.fetch.hit", tx.Table)
-		tx.Table.caches[propertyID].add(value, val)
+		if c := tx.Table.caches[propertyID]; c != nil {
+			c.add(value, val)
+		}
 		return val, nil
 	}
 	stat.apply(&tx.Table.stat.Event.Factorize.FetchMiss.Count, &tx.Table.stat.Event.Factorize.FetchMiss.Duration, "event.factorize.fetch.miss", tx.Table)
@@ -493,7 +497,9 @@ func (tx *Tx) addFactor(propertyID int, value string) (int, error) {
 	}
 
 	// Add to cache.
-	tx.Table.caches[propertyID].add(value, int(index))
+	if c := tx.Table.caches[propertyID]; c != nil {
+		c.add(value, int(index))
+	}
 
 	stat.count++
 	stat.apply(&tx.Table.stat.Event.Factorize.Create.Count, &tx.Table.stat.Event.Factorize.Create.Duration, "event.factorize.create", tx.Table)
@@ -514,10 +520,12 @@ func (tx *Tx) defactorize(propertyID int, index int) (string, error) {
 	}
 
 	// Check the cache first.
-	if key, ok := tx.Table.caches[propertyID].getKey(index); ok {
-		tx.Table.stat.Event.Defactorize.CacheHit.Count++
-		statsd.Count("event.defactorize.cache.hit", int64(tx.Table.stat.Event.Defactorize.CacheHit.Count), tx.Table.ddTags())
-		return key, nil
+	if c := tx.Table.caches[propertyID]; c != nil {
+		if key, ok := c.getKey(index); ok {
+			tx.Table.stat.Event.Defactorize.CacheHit.Count++
+			statsd.Count("event.defactorize.cache.hit", int64(tx.Table.stat.Event.Defactorize.CacheHit.Count), tx.Table.ddTags())
+			return key, nil
+		}
 	}
 
 	var stat = bench()
@@ -530,7 +538,9 @@ func (tx *Tx) defactorize(propertyID int, index int) (string, error) {
 	stat.apply(&tx.Table.stat.Event.Defactorize.FetchHit.Count, &tx.Table.stat.Event.Defactorize.FetchHit.Duration, "event.defactorize.fetch.hit", tx.Table)
 
 	// Add to cache.
-	tx.Table.caches[propertyID].add(string(data), index)
+	if c := tx.Table.caches[propertyID]; c != nil {
+		c.add(string(data), index)
+	}
 
 	return string(data), nil
 }
