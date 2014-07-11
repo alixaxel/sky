@@ -519,6 +519,11 @@ func (tx *Tx) defactorize(propertyID int, index int) (string, error) {
 		return "", nil
 	}
 
+	// Make sure the property exists.
+	if p := tx.Table.propertiesByID[propertyID]; p == nil || p.DataType != Factor {
+		return "", nil
+	}
+
 	// Check the cache first.
 	if c := tx.Table.caches[propertyID]; c != nil {
 		if key, ok := c.getKey(index); ok {
