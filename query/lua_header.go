@@ -162,7 +162,11 @@ function sky_average_merge(a, b)
     a.count = a.count + b.count
     a.sum = a.sum + b.sum
   end
-  a.avg = a.sum / a.count
+
+  if a ~= nil then
+    a.avg = a.sum / a.count
+  end
+
   return a
 end
 
