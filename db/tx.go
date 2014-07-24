@@ -348,6 +348,7 @@ func (tx *Tx) insertEvent(id string, e *Event) error {
 	if err != nil {
 		return err
 	}
+	b.FillPercent = 0.9
 
 	// Marshal raw event into byte slice.
 	var stat = bench()
